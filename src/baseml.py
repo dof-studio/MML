@@ -9,17 +9,59 @@ try:
 except ImportError:
     torch = None
     
+import lzma
+from dump import save, load
+    
 from typing import List
     
 from matrix import Matrix
 from tensor import Tensor
 
 
+# Machine Learning Algorithm Base Class
 class MLBase:
     """
     Base class that provides common traits for machine learning tasks,
     including data splitting methods.
     """
+    
+    __attr__ = "MML.MLBase"
+    
+    def _random_state_next(self, attr: str = "random_state") -> int | None:
+        """
+        Advances the random state for a given attribute and returns it.
+        If assigned as None, then return None without doing anything.
+        
+        Args:
+            attr (str): The name of the attribute to retrieve and advance. Default is 'random_state'.
+        
+        Returns:
+            int | None: The next value of the random state or None if no such state exists.
+        
+        Raises:
+            AttributeError: If the specified attribute does not exist in the object.
+        
+        """
+        # Retrieve the random state atrribute
+        if getattr(self, attr) is None:
+            return None  # Nonetype cannot be advanced
+        else:
+            random_state = getattr(self, attr)
+        
+        # If existing random_state_count, retrieve the count, else create it
+        if getattr(self, attr + "_count") is None:
+            setattr(self, attr + "_count", 0)
+        
+        # If existing random_state_offset, retrieve the offset, else create it
+        if getattr(self, attr + "_offset") is None:
+            setattr(self, attr + "_offset", 57119)
+        random_state_offset = getattr(self, attr + "_offset")
+        
+        # Next the random state and return it
+        random_state += random_state_offset
+        setattr(self, attr + "_count", getattr(self, attr + "_count") + 1)
+        
+        return random_state
     
     @staticmethod
     def train_test_split(X: Matrix | Tensor, y: Matrix | Tensor, test_size=0.2, random_state=None):
@@ -178,11 +220,43 @@ class MLBase:
             folds.append((X[train_idx], X[test_idx], y[train_idx], y[test_idx]))
         return folds
 
+    @staticmethod
+    def save(instance, filepath:str):
+        """
+        Save the model object into a file to your disk.
+        
+        Args:
+            instance: a MLBase derived object
+            filepath: str, the destination file path to save.
+        """
+        save({"__attr__" : instance.__attr__, "data": instance}, filepath, kompress=lzma, protocol=5)
+        
+    def load(self, filepath:str):
+        """
+        Load the model object from a file from your disk.
+        Return the loaded model instead of evaluating to self.
+        
+        Args:
+            filepath: str, the destination file path to load.
+        """
+        rawobj = load(filepath, kompress=lzma)
+        if isinstance(rawobj, dict) == False:
+            raise ValueError(f"The file input is NOT a valid {self.__attr__} model.")
+        if rawobj.get("__attr__", "") != self.__attr__:
+            raise ValueError(f"The file input is NOT a valid {self.__attr__} model.")
+        return rawobj["data"]
+    
+    def __repr__(self):
+        return "MLBase(Machine Learning Abstract Base Class)."
 
+
+# Base Class for Regression Models
 class Regression(MLBase):
     """
     Base regression model that provides common traits for regression tasks.
     """
+    
+    __attr__ = "MML.Regression"
     
     def fit(self, X: Matrix | Tensor, y: Matrix | Tensor):
         """
@@ -214,11 +288,17 @@ class Regression(MLBase):
         """
         raise NotImplementedError("Regression model must implement predict method.")
 
+    def __repr__(self):
+        return "Regression(Regression Abstract Base Class)."
 
+
+# Base Class for Classification Models
 class Classification(MLBase):
     """
     Base classification model that provides common traits for classification tasks.
     """
+    
+    __attr__ = "MML.Classification"
     
     def fit(self, X: Matrix | Tensor, y: Matrix | Tensor):
         """
@@ -252,6 +332,93 @@ class Classification(MLBase):
         
         """
         raise NotImplementedError("Classification model must implement predict method.")
+
+    @staticmethod
+    def _to_binary_prob(x: Tensor | Matrix) -> Tensor | Matrix:
+        """
+        Converts one-hot predictions or targets into binary probability.
+        
+        If x has more than one column (two, must be), it returns
+        probabilities of entries to be 1.
+             
+        Args:
+            x: Matrix | Tensor: The one-hot or probability matrix.
+
+        Returns:
+            Matrix | Tensor: The converted Tensor or Matrix in (n_samples, 1) shape.
+        """
+        # Wide-table: prob or one-hot
+        if len(x.shape) > 1 and x.shape[1] == 2:
+            # Always keep the dim.
+            return x[:,1].reshape([-1, 1])
+        # Already only one column
+        elif len(x.shape) > 1 and x.shape[1] == 1:
+            return x
+        # Unknown cases
+        else:
+            raise ValueError("When converting to binary_probability from one-hot probabilities, the input dimension must be (n_samples, 2) or aleady been (n_samples, 1)")
+
+    @staticmethod
+    def _to_labels(x: Tensor | Matrix, *, apply_softmax:bool = False) -> Tensor | Matrix:
+        """
+        Converts predictions or targets into label vectors.
+        
+        If x has more than one column (i.e. one-hot or probability matrix), it returns
+        the index of the maximum value along axis 1. Otherwise, x is assumed already to be a vector.
+             
+        Args:
+            x: Matrix | Tensor: The one-hot or probability matrix.
+            apply_softmax: bool, whether to apply softmax before calculating argmax or not.
+    
+        Returns:
+            Matrix | Tensor: The converted Tensor or Matrix in (n_samples, 1) shape.
+        """
+        # Wide-table: prob or one-hot
+        if len(x.shape) > 1 and x.shape[1] > 1:
+            # Always keep the dim.
+            return x.argmax(axis=1).reshape([-1, 1]) if apply_softmax == False else x.softmax(axis=1).argmax(axis=1).reshape([-1, 1])
+        # Narrow table
+        else:    
+            return x
+
+    @staticmethod
+    def _to_onehot(x: Tensor | Matrix, n_classes: int, *, binarize = False) -> Tensor | Matrix:
+        """
+        Converts a label vector into a one-hot encoded matrix of shape [n_samples, n_classes].
+        If x is already a matrix with the correct number of columns, it is returned unaltered.
+        If x is binary probability input and binarize is False, then will return the probablistic one-hot.
+                     
+        Args:
+            x: Matrix | Tensor: The label-encoded matrix.
+    
+        Returns:
+            Matrix | Tensor: The converted one-hot Tensor or Matrix in (n_samples, n_classes) shape.
+        """
+        if len(x.shape) == 2 and x.shape[1] == n_classes:
+            return x
+        
+        # If binary case, then create a probabilistic one-hot to reduce information loss
+        if n_classes == 2 and binarize == False:
+            onehot_data = type(x).zeros([x.shape[0], 2], backend=x._backend)
+            onehot_data[:, 1] = x.flatten()
+            onehot_data[:, 0] = 1.0 - onehot_data[:, 1]
+            return onehot_data.to(backend=x._backend, device=x.device, dtype=x.dtype)
+        
+        # Else, do the round
+        else:
+            # Create one-hot by comparing each element with a range vector.
+            range_vec = type(x)(np.arange(n_classes), backend=x._backend, device=x.device)
+            # Reshape x to [n_samples, 1] if necessary
+            x_reshaped = x.reshape([x.shape[0], 1])
+            
+            # Broadcast the comparison: each entry becomes True if equal to the class index.
+            onehot_data = x_reshaped.round() == range_vec
+            # The above one produces a boolean array -> like True, False, True, ...
+            #                                                False, True, False, ...
+            return onehot_data.to(backend=x._backend, device=x.device, dtype=int)
+
+    def __repr__(self):
+        return "Classification(Regression Abstract Base Class)."
 
 
 # Test cases

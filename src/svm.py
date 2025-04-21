@@ -25,6 +25,8 @@ class SVM(Classification):
     The dual optimization problem is solved using SciPy's SLSQP method or torch's Gradient method.
     """
     
+    __attr__ = "MML.SVM"
+    
     __kernel_linear__     = 1000
     __kernel_rbf__        = 1001
     __kernel_polynomial__ = 1002
@@ -56,6 +58,8 @@ class SVM(Classification):
             max_iters (int): Number of maximum iterations allowed for optimization problem. Default (10000)
             penalty_coef (float): Penalty coefficient applied when doing torch optimization. Default (1000.0).
         """
+        super().__init__()
+        
         self.kernel = kernel.lower() if isinstance(kernel, str) else kernel
         self.reserved_kernel = None # Used when selected reserved kernel.
         if self.kernel == "linear":

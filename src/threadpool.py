@@ -10,6 +10,8 @@ import threading
 import time
 from typing import Any
 
+
+# A Threadpool worker class
 class ThreadPool:
     """
     A simple thread pool for executing functions in separate threads.
@@ -86,6 +88,77 @@ class ThreadPool:
             wait (bool): If True, block until all running tasks are finished.
         """
         self.executor.shutdown(wait=wait)
+
+
+# A Pythonic/STL mutex comptible wrapper
+class Mutex:
+    """
+    A thin wrapper around :class:`threading.Lock` that mimics the interface
+    of C++ `std::mutex` while feeling Pythonic.
+
+    It supports the three canonical methods—``lock``, ``try_lock``, and
+    ``unlock``—plus context‑manager helpers so you can use the ``with``‑statement
+    for automatic acquisition / release.
+
+    Example
+    -------
+    >>> m = Mutex()
+    >>> m.lock()          # block until the mutex is free
+    >>> m.unlock()        # release it again
+    >>> m.try_lock()      # returns True or False
+    >>> with m:           # RAII style
+    ...     critical()
+    """
+
+    def __init__(self) -> None:
+        """
+        Create an unlocked mutex.
+        """
+        self._lock: threading.Lock = threading.Lock()
+
+    # C++ std::mutex::lock()
+    def lock(self) -> None:
+        """
+        Block the calling thread until the mutex is acquired.
+        """
+        self._lock.acquire()
+
+    # C++ std::mutex::try_lock()
+    def try_lock(self) -> bool:
+        """
+        Attempt to acquire the mutex without blocking.
+
+        Returns
+        -------
+        bool
+            ``True`` if the lock was acquired, ``False`` otherwise.
+        """
+        return self._lock.acquire(blocking=False)
+
+    # C++ std::mutex::unlock()
+    def unlock(self) -> None:
+        """
+        Release the mutex.
+
+        Notes
+        -----
+        Only the thread that currently owns the lock may call this.
+        """
+        self._lock.release()
+
+    def __enter__(self) -> "Mutex":
+        """
+        Enter a ``with``‑block by locking the mutex.
+        """
+        self.lock()
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        """
+        Exit a ``with``‑block by unlocking the mutex—even if an exception
+        was raised inside the block.
+        """
+        self.unlock()
 
             
 # Test cases demonstrating usage:

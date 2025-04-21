@@ -12,11 +12,14 @@ except ImportError:
 from matrix import Matrix
 from tensor import Tensor
 
+# Implementation of Data Scaler
 class Scaling:
     """
     Scale class that fits on a Matrix and can perform either centralization (subtracting the mean)
     or min-max scaling (scaling features to the [0, 1] range), with the ability to reverse the operation.
     """
+    
+    __attr__ = "MML.Scaling"
     
     def __init__(self, method="centralize", *, robust_p = 0.25):
         '''
@@ -57,6 +60,7 @@ class Scaling:
             else:
                 mean_val = torch.mean(X.data, dim=axis)
             self.params['mean'] = type_X(mean_val, backend=X._backend, device=X.device, dtype=X.dtype)
+        
         elif self.method == "normalize":
             # Normalize the data with 0 mean and std of 1
             if X._is_numpy:
@@ -67,6 +71,7 @@ class Scaling:
                 stdev_val = torch.std(X.data, dim=axis)
             self.params['mean'] = type_X(mean_val, backend=X._backend, device=X.device, dtype=X.dtype)
             self.params['std'] = type_X(stdev_val, backend=X._backend, device=X.device, dtype=X.dtype)
+        
         elif self.method == "minmax":
             # Minmax to make data in a range of [0,1]
             if X._is_numpy:
@@ -77,6 +82,7 @@ class Scaling:
                 max_val = torch.max(X.data, dim=axis).values
             self.params['min'] = type_X(min_val, backend=X._backend, device=X.device, dtype=X.dtype)
             self.params['max'] = type_X(max_val, backend=X._backend, device=X.device, dtype=X.dtype)
+        
         elif self.method == "robust":
             # Compute median and interquartile range to reduce the effect of outliers.
             if X._is_numpy:
@@ -157,6 +163,7 @@ class Scaling:
             return X * self.params['iqr'] + self.params['median']
         else:
             raise ValueError("Unsupported scaling method. Choose 'centralize', 'normalize', 'minmax', or 'robust'.")
+
 
 # Test cases
 if __name__ == "__main__":

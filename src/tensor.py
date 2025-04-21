@@ -4,12 +4,16 @@
 # From MML Library by Nathmath
 
 import numpy as np
+import scipy as sp
 try:
     import torch
 except ImportError:
     torch = None
+    
+from objtyp import Object
 
-class Tensor:
+
+class Tensor(Object):
     """
     A production-level Tensor class providing a unified interface for common machine learning operations.
     This class supports either a numpy.ndarray or a torch.Tensor as its underlying backend. To optimize performance,
@@ -28,6 +32,32 @@ class Tensor:
     
     __attr__ = "MML.Tensor"    
     
+    def e(self):
+        """
+        Returns natural exponent value as a single-value Matrix.
+        
+        Returns:
+            -------
+            Tensor with 0 shape. exp value.
+        """
+        if self._is_numpy:
+            return Tensor(np.e, backend = self._backend, dtype = self.dtype, device = self.device)
+        else:
+            return Tensor(torch.e, backend = self._backend, dtype = self.dtype, device = self.device)
+    
+    def pi(self):
+        """
+        Returns pi value as a single-value Matrix.
+        
+        Returns:
+            -------
+            Tensor with 0 shape. pi value.
+        """
+        if self._is_numpy:
+            return Tensor(np.pi, backend = self._backend, dtype = self.dtype, device = self.device)
+        else:
+            return Tensor(torch.pi, backend = self._backend, dtype = self.dtype, device = self.device)
+    
     def __init__(self, data, backend="numpy", *, dtype=None, device=None):
         """
         Initializes a Tensor instance with the specified backend.
@@ -41,6 +71,8 @@ class Tensor:
         Raises:
             ValueError: If an unsupported backend is specified.
         """
+        super().__init__()
+        
         self._backend = backend.lower()
         if self._backend not in ("numpy", "torch"):
             raise ValueError("Unsupported backend. Please choose 'numpy' or 'torch'.")
@@ -193,7 +225,7 @@ class Tensor:
             if self._is_torch:
                 # If already torch tensor, just move it to the desired device.
                 return Tensor(self.data.to(device, dtype = dtype), backend="torch")
-            return Tensor(self.data, backend=self._backend)
+            return Tensor(self.data, backend=self._backend, device=device, dtype=dtype)
         
         # Convert to numpy if requested.
         if target == "numpy":
@@ -322,39 +354,60 @@ class Tensor:
         
             # Return a new Matrix instance with the updated data.
         return Tensor(new_data, backend=self._backend)
+    
+    def __eq__(self, other):
+        """ Equals operator. """
+        if isinstance(other, Object):
+            if np.prod(self.data.shape) == 1 and np.prod(other.data.shape) == 1:
+                # Scalar to scalar, output a scalar
+                return bool(self.flatten().data == other.flatten().data)
+            else:
+                return Tensor(self.data == other.data, backend=self._backend)
+                
+        elif np.prod(self.data.shape) == 1 and hasattr(other, "__len__") == False:
+            # Scalar to scalar, output a scalar
+            return bool(self.data == other)
+        else:
+            return Tensor(self.data == other, backend=self._backend)
 
     def __add__(self, other):
         """Element-wise addition."""
-        return self._apply_op(other, lambda a, b: a + b)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(self.data + other_val, backend=self._backend)
 
     def __radd__(self, other):
         """Right-hand element-wise addition."""
-        return self.__add__(other)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(other_val + self.data, backend=self._backend)
 
     def __sub__(self, other):
         """Element-wise subtraction."""
-        return self._apply_op(other, lambda a, b: a - b)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(self.data - other_val, backend=self._backend)
 
     def __rsub__(self, other):
         """Right-hand element-wise subtraction."""
-        other_val = other.data if isinstance(other, Tensor) else other
+        other_val = other.data if isinstance(other, Object) else other
         return Tensor(other_val - self.data, backend=self._backend)
 
     def __mul__(self, other):
         """Element-wise multiplication."""
-        return self._apply_op(other, lambda a, b: a * b)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(self.data * other_val, backend=self._backend)
 
     def __rmul__(self, other):
         """Right-hand element-wise multiplication."""
-        return self.__mul__(other)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(other_val * self.data, backend=self._backend)
 
     def __truediv__(self, other):
         """Element-wise true division."""
-        return self._apply_op(other, lambda a, b: a / b)
+        other_val = other.data if isinstance(other, Object) else other
+        return Tensor(self.data / other_val, backend=self._backend)
 
     def __rtruediv__(self, other):
         """Right-hand element-wise true division."""
-        other_val = other.data if isinstance(other, Tensor) else other
+        other_val = other.data if isinstance(other, Object) else other
         return Tensor(other_val / self.data, backend=self._backend)
     
     def __pow__(self, to_power):
@@ -363,7 +416,7 @@ class Tensor:
 
     def __rpow__(self, other):
         """Right-hand element-wise power."""
-        return self.__mul__(other)
+        return self.__pow__(other)
 
     def __matmul__(self, other):
         """
@@ -411,6 +464,58 @@ class Tensor:
             result = self.data.nonzero()
         return Tensor(result, backend=self._backend)
     
+    def any(self, axis = None):
+        """
+        Computes the element-wise logical OR along a specified axis.
+        
+        Args: 
+            axis (int or None): Axis along which to apply the `any` operation. If not provided,
+                                it applies over all elements of the matrix.
+        
+        Returns:
+            Tensor: A new Tensor containing the result of the logical OR operation along the specified axis.
+        
+        """
+        if self._is_numpy:
+            result = np.any(self.data, axis=axis)
+        else:
+            result = self.data.any(dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def all(self, axis = None):
+        """
+        Computes the element-wise logical AND along a specified axis.
+    
+        Args: 
+            axis (int or None): Axis along which to apply the `all` operation. If not provided,
+                                it applies over all elements of the matrix.
+        
+        Returns:
+            Tensor: A new Tensor containing the result of the logical AND operation along the specified axis.
+        
+        """
+        if self._is_numpy:
+            result = np.all(self.data, axis=axis)
+        else:
+            result = self.data.all(dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def round(self, digits = 0):
+        """
+        Rounds the data to a specified number of decimal places.
+    
+        Args:
+            digits (int): The number of decimal places to round the data. Default is 0.
+        
+        Returns:
+            Tensor: A new Tensor containing the rounded values of the original data.
+        """
+        if self._is_numpy:
+            result = np.round(self.data, decimals = digits)
+        else:
+            result = torch.round(self.data, decimals = digits)
+        return Tensor(result, backend=self._backend)
+    
     def mean(self, axis = None):
         """
         Computes the mean of the Tensor along a specified axis.
@@ -426,6 +531,26 @@ class Tensor:
             result = np.mean(self.data, axis=axis)
         else:
             result = torch.mean(self.data, dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def median(self, axis = None):
+        """
+        Computes the median along a given axis.
+    
+        Args:
+            axis (Optional[int]): Axis along which to compute the median. Default is None, which computes over all dimensions.
+        
+        Returns:
+            Tensor: A new Tensor containing the computed medians.
+    
+        """
+        if self._is_numpy:
+            result = np.median(self.data, axis=axis)
+        else:
+            if axis is None:
+                result = torch.median(self.data)
+            else:
+                result, _ = torch.median(self.data, dim=axis)
         return Tensor(result, backend=self._backend)
     
     def std(self, axis = None):
@@ -606,6 +731,44 @@ class Tensor:
             result = torch.cumprod(self.data, dim=axis)
         return Tensor(result, backend=self._backend)
     
+    def gamma(self):
+        """
+        Computes the element-wise Gamma function.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: A new Tensor containing the Gamma function values for each element in the original data.
+        
+        """
+        if self._is_numpy:
+            result = sp.special.gamma(self.data)
+        else:
+            def torch_gamma(x):
+                pos = torch.exp(torch.lgamma(x))
+                neg = torch.pi / (torch.sin(torch.pi * x) * torch.exp(torch.lgamma(1 - x)))
+                return torch.where(x > 0, pos, neg)
+            result = torch_gamma(self.data)
+        return Tensor(result, backend=self._backend) 
+    
+    def loggamma(self):
+        """
+        Computes the element-wise natural logarithm of the Gamma function.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: A new Tensor containing the natural logarithm of the Gamma function values for each element in the original data.
+        
+        """
+        if self._is_numpy:
+            result = sp.special.gammaln(self.data)
+        else:
+            result = torch.special.gammaln(self.data)
+        return Tensor(result, backend=self._backend) 
+    
     def logistic(self, L=1.0, k=1.0, x0=0.0):
         """
         Applies the logistic (sigmoid) function element-wise on the input Tensor.
@@ -644,6 +807,28 @@ class Tensor:
             result = x0 - (1/k) * np.log((L - self.data) / self.data)
         else:
             result = x0 - (1/k) * torch.log((L - self.data) / self.data)
+        return Tensor(result, backend=self._backend)
+    
+    def cholesky(self, upper = False):
+        """
+        Computes the Cholesky decomposition of a symmetric positive-definite matrix.
+        L @ U = self.data
+        returns L if upper = False else U
+        
+        Args:
+            upper (bool): If True, compute the upper triangular factor. Default is False.
+        
+        Returns:
+            Tensor: A new Tensor containing the lower triangular factor of the original data if `upper` is False,
+                    or its transpose if `upper` is True.
+        
+        """
+        if self._is_numpy:
+            result = np.linalg.cholesky(self.data)
+            if upper == True:
+                result = result.T
+        else:
+            result = torch.cholesky(self.data, upper = upper)
         return Tensor(result, backend=self._backend)
     
     def exp(self):
@@ -787,6 +972,66 @@ class Tensor:
             result = torch.log(self.data)
         return Tensor(result, backend=self._backend)
     
+    def softmax(self, axis = 1, keepdims:bool | None = True):
+        """
+        Applies the softmax function along a specified axis.
+        Reminder -> Shapre will be shrinked by 1 so that you may need to reshape() it.
+        
+        Args:
+            axis (int): Axis along which to apply the softmax. Default is 1.
+            keepdims (bool or None): Whether to keep the reduced dimensions as axes with size one. 
+                                    If `True`, the shape of the result will be the same as input; otherwise, it will not have these dimensions.
+    
+        Returns:
+            Tensor: A new Tensor containing the softmax values along the specified axis.
+        
+        """
+        if self._is_numpy:
+            if keepdims is not None and axis is not None:
+                e_x = np.exp(self.data - np.max(self.data, axis=axis, keepdims=keepdims))
+                result = e_x / e_x.sum(axis=axis, keepdims=keepdims)
+            else:
+                e_x = np.exp(self.data - np.max(self.data, axis=axis))
+                result = e_x / e_x.sum(axis=axis)
+        else:
+            result = torch.nn.functional.softmax(self.data, dim=axis)
+        return Tensor(result, backend=self._backend)
+
+    def argmax(self, axis = 1):
+        """
+         Computes the indices of the maximum values along a specified axis.
+         Reminder -> Shapre will be shrinked by 1 so that you may need to reshape() it.
+        
+         Args:
+             axis (int | None): Axis along which to compute the argmax. Default is 1.
+         
+         Returns:
+             Tensor: A new Tensor containing the indices of the maximum values along the specified axis.
+         
+        """
+        if self._is_numpy:
+            result = np.argmax(self.data, axis=axis)
+        else:
+            result = torch.argmax(self.data, dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def argmin(self, axis = 1):
+        """
+        Computes the indices of the minimum values along a specified axis.
+    
+        Args:
+            axis (int | None): Axis along which to compute the argmin. Default is 1.
+        
+        Returns:
+           Tensor: A new Tensor containing the indices of the minimum values along the specified axis.
+        
+        """
+        if self._is_numpy:
+            result = np.argmin(self.data, axis=axis)
+        else:
+            result = torch.argmin(self.data, dim=axis)
+        return Tensor(result, backend=self._backend)    
+    
     def flatten(self):
         """
         Returns the flattened tensor.
@@ -795,7 +1040,23 @@ class Tensor:
             Matrix: The flattened tensor.
         """
         return Tensor(self.data.flatten(), backend=self._backend)
-
+    
+    def diag(self):
+        """
+        Computes the diagonal vector of a square matrix.
+        Or create a diagonal matrix if 1D matrix.
+        
+        Returns:
+            Tensor: The diagonal vector.
+            
+        Raises:
+            ValueError: If the Tensor is not square.
+        """
+        if self._is_numpy:
+            return Tensor(np.diag(self.data), backend=self._backend)
+        else:
+            return Tensor(torch.diag(self.data), backend=self._backend)
+    
     def reverse(self, axis = 0):
         """
         Reverse the flattened tensor.
@@ -839,6 +1100,62 @@ class Tensor:
         else:
             result = torch.hstack(data_list)
         return Tensor(result, backend=self._backend)
+
+    def sign(self):
+        """
+        Computes the element-wise sign of the data. Returns with the same type.
+    
+        Args: 
+            None
+    
+        Returns:
+            Tensor: A new Tensor containing the sign values (1 for positive, -1 for negative, 0 for zero) of each element in the original data.
+        
+        """
+        if self._is_numpy:
+            result = np.sign(self.data)
+        else:
+            result = torch.sign(self.data)
+        return Tensor(result, backend=self._backend)
+
+    def repeat(self, repeats, axis=None):
+        """
+        Repeats the Tensor elements along a specified axis.
+    
+        Args:
+            repeats (int or tuple[int]): The number of times to repeat each element.
+            axis (int): Axis along which to repeat the elements. If `None`, repeats over all dimensions.
+    
+        Returns:
+            Tensor: A new Tensor with repeated elements.
+        """
+        if self._is_numpy:
+            result = self.data.repeat(repeats, axis=axis)
+        else:
+            if axis is None:
+                result = torch.repeat_interleave(self.data, repeats)
+            else:
+                result = torch.repeat_interleave(self.data, repeats, dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def bincount(self, *, weights = None, inttype: type = int):
+        """
+        Counts the number of occurrences of each value in `data` and optionally returns a weighted count.
+        Values will be forcefully casted to `inttype`
+    
+        Args:
+            weights (array_like | Tensor): An array-like object containing weights corresponding to each element in `data`. Default is None.
+            inttype (type): A type that the data is going to be casted to.
+        
+        Returns:
+            Tensor: A new Tensor with the bin counts or weighted bin counts.
+    
+        """
+        if self._is_numpy:
+            result = np.bincount(self.astype(inttype).data, weights = weights)
+        else:
+            result = torch.bincount(self.astype(inttype).data, weights = weights)
+        return Tensor(result, backend=self._backend)
     
     def transpose(self, *axes):
         """
@@ -854,7 +1171,199 @@ class Tensor:
             result = self.data.transpose(axes) if axes else self.data.T
         else:
             result = self.data.permute(*axes) if axes else self.data.permute(*reversed(range(self.data.dim())))
+        if len(self.shape) > 1:
+            return Tensor(result, backend=self._backend)
+        else:
+            # From a row vector to a column vector
+            return Tensor(result.reshape([self.shape[0], 1]), backend=self._backend)
+    
+    def quantile(self, q: float, axis = None, keepdims = False):
+        """
+        Computes the specified quantiles along a given axis.
+    
+        Args:
+            q (float): The quantile to compute. Should be between 0 and 1.
+            axis (Optional[int]): Axis along which to compute the quantile. Default is None, which computes over all dimensions.
+            keepdims (bool): Whether to keep the reduced axes in the result as singleton dimensions. Default is False.
+    
+        Returns:
+            Tensor: A new Tensor containing the computed quantiles.
+    
+        """
+        if self._is_numpy:
+            result = np.quantile(self.data, q, axis = axis, keepdims = keepdims)
+        else:
+            if axis is None:
+                result = torch.quantile(self.data, q, keepdims = keepdims)
+            else:
+                result = torch.quantile(self.data, q, dim = axis, keepdims = keepdims)
         return Tensor(result, backend=self._backend)
+    
+    def sort(self, axis: int | None = None):
+        """
+        Sorts the tensor elements along (the first column of) a specified axis.
+        If you intend to sort on only one array, use `sort_along` instead,
+        or if you want to sort along each column of each base dimension, use `sort_along_each_column` instead.
+        
+        Args:
+            axis (int or None): Axis to sort along. If `None`, sorts the entire matrix.
+        
+        Returns:
+            Tensor: A new Tensor with sorted elements.
+        
+        """
+        if self._is_numpy:
+            result = np.sort(self.data, axis=axis)
+        else:
+            if axis is None:
+                result, idx = self.data.sort()
+            else:
+                result, idx = self.data.sort(dim=axis)
+        return Tensor(result, backend=self._backend)
+    
+    def sort_along(self, axis: tuple = (None, 0)):
+        """
+        Sort the N-dimensional data along the 1d values on `axis`.
+        If you intend to sort on the first column of axis `axis`, use `sort` to speed up,
+        or if you want to sort along each column of each base dimension, use `sort_along_each_column` instead.
+       
+        Detail:
+        Sort the input array x. The axis parameter is a tuple of t
+        he same length as x.ndim, where each position can be None or an integer. 
+        It is required that exactly one position d in axis_vec is not None,
+        and the reference position of this dimension d is fixed = axis_vec[d], 
+        but when taking this reference, the index 0 is selected for each dimension 
+        in the global uniform way (i.e., only x[(0,)*d + (fixed,)] is used as the 
+        reference). 
+        The 1D sorting permutation is calculated (using argsort, in ascending order), 
+        and then the global permutation is applied to dimension d+1 
+        (the subsequent dimension) of x, acting on all data without sorting each
+        preceding block separately.
+        
+        Parameters
+        ----------
+            axis : tuple
+                The indicator indicating sort which data.
+
+        Returns
+        -------
+            Tensor, sorted copy.
+
+        """
+        if len(self.data.shape) != len(axis):
+            raise ValueError("The length of axis must be equal to the number of dimensions of the input array.")
+        non_none = [(d, val) for d, val in enumerate(axis) if val is not None]
+        if len(non_none) != 1:
+            raise ValueError("There must be exactly one non-None element in axis")
+        d, fixed = non_none[0]
+        if d > len(self.data.shape) - 1:
+            raise ValueError("The non-None dimension cannot be greater than dimension.")
+        if fixed < 0 or fixed >= self.data.shape[d]:
+            raise IndexError(f"Fixed index {fixed} is out of range for dimension {d} (0 to {self.data.shape[d]-1})")
+        
+        # Last dim sort
+        if d == len(self.data.shape) - 1 and len(self.data.shape) == 2:
+            # Transpose, and sort the row
+            return self.transpose().sort_along(axis=(axis[1], axis[0])).transpose()
+        elif d == len(self.data.shape) - 1 and len(self.data.shape) > 2:
+            # Transpose the inner two dimensions
+            tr_axe = list(range(len(self.data.shape))); tmp = tr_axe[-1]; tr_axe[-1] = tr_axe[-2]; tr_axe[-2] = tmp;
+            axis_new = list(np.repeat(None, len(self.data.shape))); axis_new[-2] = fixed
+            return self.transpose(*tr_axe).sort_along(axis=axis_new).transpose(*tr_axe)
+        
+        # Extract global reference: fixed on dimension d, but all dimensions before d are indexed as 0.
+        # Construct index tuple: fixed to 0 for dimensions < d, fixed to the dth dimension, and use slice(None) to eliminate the remaining axes.
+        idx = (0,) * d + (fixed,)
+        
+        if self._is_numpy:
+            # Extract the reference key, which is expected to be 1D and have a length equal to self.data.shape[d+1]
+            key = np.asarray(self.data[idx])
+            if key.ndim != 1 or key.shape[0] != self.data.shape[d+1]:
+                raise ValueError("The reference key must be one-dimensional and its length must be the same as the length of the sorting axis.")
+            order = np.argsort(key)
+           
+            # Construct a global index array for np.take_along_axis: needs to have the same shape as x,
+            # but order along sorting axis d+1, other dimensions are copied via broadcasting.
+            order_shape = [1] * len(self.data.shape)
+            order_shape[d+1] = self.data.shape[d+1]
+            order_global = order.reshape(order_shape)
+            order_global = np.broadcast_to(order_global, self.data.shape)
+            sorted_ = np.take_along_axis(self.data, order_global, axis=d+1)
+            return Tensor(sorted_, backend=self._backend, dtype=self.dtype, device=self.device)
+
+        else:
+            key = self.data[idx]
+            # key should be 1D, and its length should be equal to self.data.shape[d+1]
+            if key.dim() != 1 or key.size(0) != self.data.shape[d+1]:
+                raise ValueError("The reference key must be one-dimensional and its length must be the same as the length of the sorting axis.")
+            # Calculate the sort order (ascending)
+            order = torch.argsort(key, dim=0)
+            
+            # Construct a global index tensor with the same shape as self.data, but with order on the sorting axis d+1
+            order_shape = [1] * len(self.data.shape)
+            order_shape[d+1] = self.data.shape[d+1]
+            order_global = order.view(*order_shape).expand(self.data.shape)
+            
+            # Use torch.gather to rearrange self.data according to the global index tensor on dim=d+1
+            sorted_ = torch.gather(self.data, dim=d+1, index=order_global)
+            return Tensor(sorted_, backend=self._backend, dtype=self.dtype, device=self.device)
+        
+    def sort_along_each_column(self, axis: int = 1, on_col: int = 0):
+        """
+        Sort the N-dimensional data along values on column `on_col` of the axis `axis`.
+        Note, it will sort EACH `on_col` of the exterior axises.
+        If you intend to sort on the first column of axis `axis`, use `sort` to speed up.
+       
+        Detail:
+        Instead of sorting itself in d dimensions, use the reference sequence obtained by taking index=i on the d axis of x, and apply the same rearrangement to the d+1 axis (next axis) of x.
+
+        For example, for a 2D array, when d=0, i=1,
+        take the reference sequence = x[1, :], calculate its argsort to get the sorted arrangement, and then rearrange the columns of each row of the entire array according to this arrangement;
+        For a 3D array, when d=1, i=0,
+        for each subarray with fixed axis=0, take the reference sequence = subarray[0, :] (that is, the row of axis=1 index 0),
+        calculate argsort (sort the elements in the reference sequence), and then rearrange all rows in the subarray (all slices of axis=1) on axis=2 according to this arrangement.
+
+        Parameters
+        ----------
+            axis : int
+                The axis of the column is on. The default is 1.
+            on_col : int
+                The index of the column is on. The default is 0.
+
+        Returns
+        -------
+            Tensor, sorted copy.
+
+        """
+        if len(self.data.shape) < 2:
+            raise ValueError("The input data must at least have 2 dimensions. Use `sort` if it is a 1d array.")
+        if axis < 0 or axis > len(self.data.shape) - 1:
+            raise ValueError("The parameter d must be positive and smaller than ndim.")
+        if axis == len(self.data.shape) - 1 and len(self.data.shape) == 2:
+            # Transpose, and sort the row
+            return self.transpose().sort_along_each_column(axis=0, on_col=on_col).transpose()
+        elif axis == len(self.data.shape) - 1 and len(self.data.shape) > 2:
+            # Transpose the inner two dimensions
+            tr_axe = list(range(len(self.data.shape))); tmp = tr_axe[-1]; tr_axe[-1] = tr_axe[-2]; tr_axe[-2] = tmp;
+            return self.transpose(*tr_axe).sort_along_each_column(axis=axis-1, on_col=on_col).transpose(*tr_axe)
+            
+        sorted_axis = axis + 1
+
+        if self._is_numpy:
+            key = np.take(self.data, indices=on_col, axis=axis)
+            order = np.argsort(key, axis=axis)
+            order_expanded = np.expand_dims(order, axis=axis)
+            sorted_ = np.take_along_axis(self.data, order_expanded, axis=sorted_axis)
+            return Tensor(sorted_, backend=self._backend, dtype=self.dtype, device=self.device)
+
+        else:
+            key = self.data.select(dim=axis, index=on_col)
+            order = torch.argsort(key, dim=axis)
+            order_expanded = order.unsqueeze(dim=axis)
+            expand_shape = list(self.data.shape)
+            index = order_expanded.expand(*expand_shape)
+            sorted_ = torch.gather(self.data, dim=sorted_axis, index=index)
+            return Tensor(sorted_, backend=self._backend, dtype=self.dtype, device=self.device)        
     
     def determinant(self):
         """
@@ -898,6 +1407,8 @@ class Tensor:
             return np.trace(self.data)
         else:
             return torch.trace(self.data)
+        
+        
         
     def dot(self, other):
         """
@@ -961,7 +1472,55 @@ class Tensor:
                 U, s, V = torch.svd(self.data, some=not full_matrices)
                 Vh = V.t()
             return Tensor(U, backend="torch"), Tensor(s, backend="torch"), Tensor(Vh, backend="torch")
-
+ 
+    def to_list(self):
+        """
+        Converts the Tensor data into a Python list.
+        
+        Args: 
+            None
+        
+        Returns:
+            list: A Python list containing the same elements as `self.data`.
+        
+        """
+        if self._is_numpy:
+            return self.data.tolist()
+        else:
+            return self.data.cpu().tolist()
+        
+    def to_numpy_array(self):
+        """
+        Converts the Tensor data into a NumPy array.
+        
+        Returns: 
+            np.ndarray: The underlying NumPy array of the matrix.
+        
+        """
+        if self._is_numpy:
+            return self.data
+        else:
+            return self.data.detach().cpu().numpy()
+        
+    def to_torch_tensor(self, *, dtype=None, device=None):
+        """
+        Converts the Tensor data into a PyTorch tensor.
+        
+        Args: 
+            dtype (torch.dtype or None): The desired data type for the resulting tensor. If not provided,
+                                         uses the current data type of `self.data`.
+            device (torch.device or None): The target device to which the tensor should be moved.
+                                           If not provided, it will use the default device.
+        
+        Returns:
+            torch.Tensor: A PyTorch tensor containing the same data as `self.data`.
+        
+        """
+        if self._is_numpy:
+            return torch.tensor(self.data, dtype=dtype, device=device)
+        else:
+            return self.data
+        
     @staticmethod
     def equal(x, other, *, equal_nan=False):
         """
@@ -996,7 +1555,9 @@ class Tensor:
         if backend == "numpy":
             result = np.where(condition)
         else:
-            result = torch.where(condition)
+            result, = torch.where(condition)
+            if isinstance(result, tuple):
+                result = result[0]
         return Tensor(result, backend=backend, dtype=dtype)
         
     @staticmethod
@@ -1046,7 +1607,59 @@ class Tensor:
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
         return Tensor(data, backend=bk)
-
+    
+    @staticmethod
+    def zeros_like(x, backend="numpy", dtype=None):
+        """
+        Creates a matrix of zeros with the same shape and data type as another matrix.
+        
+        Args:
+            x (Tensor): The input matrix.
+            backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
+            dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+        
+        Returns:
+            Tensor: A new Tensor containing zeros with the same shape and type as `x`.
+        
+        Raises:
+            ValueError: If an unsupported backend is provided.
+        
+        """
+        bk = backend.lower()
+        if bk == "numpy":
+            data = np.zeros_like(x.data, dtype=dtype)
+        elif bk == "torch":
+            data = torch.zeros_like(x.data, dtype=dtype)
+        else:
+            raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
+        return Tensor(data, backend=bk)
+    
+    @staticmethod
+    def ones_like(x, backend="numpy", dtype=None):
+        """
+        Creates a matrix of ones with the same shape and data type as another matrix.
+        
+        Args:
+            x (Tensor): The input matrix.
+            backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
+            dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+        
+        Returns:
+            Tensor: A new Tensor containing ones with the same shape and type as `x`.
+        
+        Raises:
+            ValueError: If an unsupported backend is provided.
+        
+        """
+        bk = backend.lower()
+        if bk == "numpy":
+            data = np.ones_like(x.data, dtype=dtype)
+        elif bk == "torch":
+            data = torch.ones_like(x.data, dtype=dtype)
+        else:
+            raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
+        return Tensor(data, backend=bk)
+    
     @staticmethod
     def rand(shape, backend="numpy", dtype=None):
         """

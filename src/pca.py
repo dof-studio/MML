@@ -22,6 +22,8 @@ class PCA(Regression, Classification):
     and computes the variance explained.
     """
     
+    __attr__ = "MML.PCA"
+    
     def __init__(self, n_components=None, method="centralize", eigen_method="selfimpl"):
         """
         Initializes the PCA class.

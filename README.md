@@ -15,3 +15,4 @@ My Machine Learning and Deep Learning Library (`Nathmath`/`DOF Studio` Implement
 
 # Utils
 
+* It is in development...

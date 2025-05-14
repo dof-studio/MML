@@ -1,5 +1,5 @@
 # MML
-My Machine Learning (MML) Library (developed by`Nathmath`/`DOF Studio`) 
+My Machine Learning (MML) Library (developed by`Nathmath`/`DOF Studio`) Going to be included in Pypi!
 
 A hybrid backend (`numpy` or `torch`) machine learning and deep learning framework coding from scratch.
 

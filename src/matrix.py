@@ -702,7 +702,7 @@ class Matrix(Object):
             if axis is None:
                 result = torch.min(self.data)
             else:
-                result = torch.min(self.data, dim=axis)
+                result, indices = torch.min(self.data, dim=axis)
         return Matrix(result, backend=self._backend)
     
     def max(self, axis = None):
@@ -728,7 +728,7 @@ class Matrix(Object):
             if axis is None:
                 result = torch.max(self.data)
             else:
-                result = torch.max(self.data, dim=axis)
+                result, indices = torch.max(self.data, dim=axis)
         return Matrix(result, backend=self._backend)
     
     def clip(self, a_min=None, a_max=None):
@@ -749,13 +749,14 @@ class Matrix(Object):
             result = torch.clip(self.data, min=a_min, max=a_max)
         return Matrix(result, backend=self._backend)
     
-    def sum(self, axis = None):
+    def sum(self, axis = None, keepdims = False):
         """
         Computes the sum of the matrix along a specified axis.
         
         Args:
             axis (Optional[int]): Axis along which to compute the sum. If None, computes across all dimensions.
-        
+            keepdims (bool): If keeps the dimension or not.
+            
         Returns:
             Matrix: A new instance containing the computed sum values.
         
@@ -764,9 +765,9 @@ class Matrix(Object):
         
         """
         if self._is_numpy:
-            result = np.sum(self.data, axis=axis)
+            result = np.sum(self.data, axis=axis, keepdims=keepdims)
         else:
-            result = torch.sum(self.data, dim=axis)
+            result = torch.sum(self.data, dim=axis, keepdim=keepdims)
         return Matrix(result, backend=self._backend)
     
     def cumsum(self, axis = None):
@@ -789,13 +790,14 @@ class Matrix(Object):
             result = torch.cumsum(self.data, dim=axis)
         return Matrix(result, backend=self._backend)
     
-    def prod(self, axis = None):
+    def prod(self, axis = None, keepdims = False):
         """
         Computes the product of the matrix along a specified axis.
         
         Args:
             axis (Optional[int]): Axis along which to compute the product. If None, computes across all dimensions.
-    
+            keepdims (bool): If keeps the dimension or not.
+            
         Returns:
             Matrix: A new instance containing the computed product values.
         
@@ -804,9 +806,9 @@ class Matrix(Object):
         
         """
         if self._is_numpy:
-            result = np.prod(self.data, axis=axis)
+            result = np.prod(self.data, axis=axis, keepdims=keepdims)
         else:
-            result = torch.prod(self.data, dim=axis)
+            result = torch.prod(self.data, dim=axis, keepdim=keepdims)
         return Matrix(result, backend=self._backend)
     
     def cumprod(self, axis = None):
@@ -957,6 +959,19 @@ class Matrix(Object):
             result = torch.abs(self.data)
         return Matrix(result, backend=self._backend)
     
+    def relu(self):
+        """
+        Computes the element-wise ReLU function.
+        
+        Returns:
+            Matrix: New matrix with ReLU applied.
+        """
+        if self._is_numpy:
+            result = np.clip(self.data, 0.0)
+        else:
+            result = torch.relu(self.data)
+        return Matrix(result, backend=self._backend)
+    
     def log(self):
         """
         Computes the element-wise natural logarithm.
@@ -1007,6 +1022,21 @@ class Matrix(Object):
         else:
             result = torch.special.gammaln(self.data)
         return Matrix(result, backend=self._backend) 
+    
+    def sigmoid(self):
+        """
+        Applies the standard sigmoid function element-wise on the input Matrix.
+        
+        f(x) = L / (1 + exp(-1*x))
+        
+        Returns:
+            Matrix: A new Matrix with the sigmoid function applied element-wise.
+        """
+        if self._is_numpy:
+            result = 1.0 / (1.0 + np.exp(-1.0 * self.data ))
+        else:
+            result = torch.sigmoid(self.data)
+        return Matrix(result, backend=self._backend)
     
     def logistic(self, L=1.0, k=1.0, x0=0.0):
         """
@@ -1157,6 +1187,22 @@ class Matrix(Object):
         else:
             return Matrix(torch.flip(self.data, axis=axis), backend=self._backend)
             
+    def stack(self, *wargs, axis = 0):
+        """
+        Stack data in sequence on an axis.
+        
+        Returns:
+            Matrix: The stacked matrix.
+        """
+        data_list = [self.data]
+        for arg in wargs:
+            data_list.append(arg.data)
+        if self._is_numpy:
+            result = np.stack(data_list, axis=axis)
+        else:
+            result = torch.stack(data_list, dim=axis)
+        return Matrix(result, backend=self._backend)
+        
     def vstack(self, *wargs):
         """
         Stack data in sequence vertically (row wise).
@@ -1188,6 +1234,22 @@ class Matrix(Object):
         else:
             result = torch.hstack(data_list)
         return Matrix(result, backend=self._backend)
+    
+    def split(self, split_size_or_sections, axis=0):
+        """
+        Splits the data into chunks. Each chunk is a view of the original data.
+        
+        Returns:
+            Matrix: The hstacked matrix.
+        """
+        if self._is_numpy:
+            result = np.split(self.data, split_size_or_sections, axis=axis)
+        else:
+            result = torch.split(self.data, split_size_or_sections, dim=axis)
+        result = list(result)
+        for i, r in enumerate(result):
+            result[i] = Matrix(r, backend=self._backend) 
+        return tuple(result)   
     
     def sign(self):
         """
@@ -1723,7 +1785,65 @@ class Matrix(Object):
                 U, S, V = torch.svd(self.data, some=not full_matrices)
                 Vh = V.t()
             return Matrix(U, backend="torch"), Matrix(S, backend="torch"), Matrix(Vh, backend="torch")
+          
+    def to_zeros(self):
+        """
+        Converts the Matrix data into a same shape Matrix with 0s.
         
+        Args: 
+            None
+        
+        Returns:
+            Matrix: a same shape Matrix with 0s.
+        
+        """
+        x = self.copy()
+        x[...] = 0
+        return x
+    
+    def to_ones(self):
+        """
+        Converts the Matrix data into a same shape Matrix with 1s.
+        
+        Args: 
+            None
+        
+        Returns:
+            Matrix: a same shape Matrix with 1s.
+        
+        """
+        x = self.copy()
+        x[...] = 1
+        return x
+    
+    def to_ks(self, k: float | int = 0):
+        """
+        Converts the Matrix data into a same shape Matrix with ks.
+        
+        Args: 
+            None
+        
+        Returns:
+            Matrix: a same shape Matrix with 0s.
+        
+        """
+        x = self.copy()
+        x[...] = k
+        return x        
+
+    def to_rands(self):
+        """
+        Converts the Matrix data into a same shape Matrix with uniform random numbers.
+        
+        Args: 
+            None
+        
+        Returns:
+            Matrix: a same shape Matrix with uniform random numbers.
+        
+        """
+        return self.rand(self.shape, backend=self._backend, dtype=self.dtype, device=self.device)
+
     def to_list(self):
         """
         Converts the matrix data into a Python list.
@@ -1793,7 +1913,25 @@ class Matrix(Object):
             raise ValueError("Input `x` and `other` for comparison must have to have the same backend!")
     
     @staticmethod
-    def where(condition, backend="numpy", dtype=None):
+    def gather_along(data, axis, index):
+        """
+        Gather values on an axis with specified index.
+        
+        Parameters:
+            axis: int, the axis number to gather values on.
+            index: list | array | Matrix, the indices for each row/column/.. to gather values on.
+        
+        Returns:
+            Matrix: gathered elements.
+        """
+        if data._is_numpy:
+            result = np.take_along_axis(data.data, indices=index, axis=axis)
+        else:
+            result = torch.gather(data.data, dim=axis, index=index.data)
+        return Matrix(result, backend=data._backend, dtype=data.dtype, device=data.device)
+    
+    @staticmethod
+    def where(condition, backend="numpy", dtype=None, device=None):
         """
         Returns elements depending on `condition`.
         
@@ -1809,10 +1947,29 @@ class Matrix(Object):
             result = torch.where(condition)         
             if isinstance(result, tuple):
                 result = result[0]
-        return Matrix(result, backend=backend, dtype=dtype)
+        return Matrix(result, backend=backend, dtype=dtype, device=device)
     
     @staticmethod
-    def zeros(shape, backend="numpy", dtype=None):
+    def where_as(condition, then, other, backend="numpy", dtype=None, device=None):
+        """
+        Returns elements depending on `condition`.
+        
+        Parameters:
+            condition : Internal Type (array_like); bool Where True
+        
+        Returns:
+            Matrix: if true then applied then to true elements; other to fales elements.
+        """
+        if backend == "numpy":
+            result = np.where(condition, then, other)
+        else:
+            result = torch.where(condition, then, other)         
+            if isinstance(result, tuple):
+                result = result[0]
+        return Matrix(result, backend=backend, dtype=dtype, device=device)
+    
+    @staticmethod
+    def zeros(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix filled with zeros.
         
@@ -1820,23 +1977,21 @@ class Matrix(Object):
             shape (tuple): The shape of the matrix.
             backend (str): The backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Matrix: A new matrix of zeros.
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.zeros(shape, dtype=dtype)
-        elif bk == "torch":
-            if torch is None:
-                raise ImportError("PyTorch is not installed.")
-            data = torch.zeros(shape, dtype=dtype)
+        elif backend == "torch":
+            data = torch.zeros(shape, dtype=dtype, device=device) if dtype else torch.zeros(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Matrix(data, backend=bk)
+        return Matrix(data, backend=backend)
     
     @staticmethod
-    def ones(shape, backend="numpy", dtype=None):
+    def ones(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix filled with ones.
         
@@ -1844,23 +1999,21 @@ class Matrix(Object):
             shape (tuple): The shape of the matrix.
             backend (str): The backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Matrix: A new matrix of ones.
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.ones(shape, dtype=dtype)
-        elif bk == "torch":
-            if torch is None:
-                raise ImportError("PyTorch is not installed.")
-            data = torch.ones(shape, dtype=dtype)
+        elif backend == "torch":
+            data = torch.ones(shape, dtype=dtype, device=device) if dtype else torch.ones(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Matrix(data, backend=bk)
+        return Matrix(data, backend=backend)
     
     @staticmethod
-    def zeros_like(x, backend="numpy", dtype=None):
+    def zeros_like(x, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix of zeros with the same shape and data type as another matrix.
         
@@ -1868,6 +2021,7 @@ class Matrix(Object):
             x (Matrix): The input matrix.
             backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
             dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+            device: Data device, "cpu" or "cuda".
         
         Returns:
             Matrix: A new matrix containing zeros with the same shape and type as `x`.
@@ -1876,17 +2030,16 @@ class Matrix(Object):
             ValueError: If an unsupported backend is provided.
         
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.zeros_like(x.data, dtype=dtype)
-        elif bk == "torch":
-            data = torch.zeros_like(x.data, dtype=dtype)
+        elif backend == "torch":
+            data = torch.zeros_like(x.data, dtype=dtype, device=device) if dtype else torch.zeros_like(x.data, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Matrix(data, backend=bk)
+        return Matrix(data, backend=backend)
     
     @staticmethod
-    def ones_like(x, backend="numpy", dtype=None):
+    def ones_like(x, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix of ones with the same shape and data type as another matrix.
         
@@ -1894,6 +2047,7 @@ class Matrix(Object):
             x (Matrix): The input matrix.
             backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
             dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+            device: Data device, "cpu" or "cuda".
         
         Returns:
             Matrix: A new matrix containing ones with the same shape and type as `x`.
@@ -1902,14 +2056,13 @@ class Matrix(Object):
             ValueError: If an unsupported backend is provided.
         
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.ones_like(x.data, dtype=dtype)
-        elif bk == "torch":
-            data = torch.ones_like(x.data, dtype=dtype)
+        elif backend == "torch":
+            data = torch.ones_like(x.data, dtype=dtype, device=device) if dtype else torch.ones_like(x.data, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Matrix(data, backend=bk)
+        return Matrix(data, backend=backend)
     
     @staticmethod
     def identity(n, backend="numpy", dtype=None):
@@ -1936,7 +2089,7 @@ class Matrix(Object):
         return Matrix(data, backend=bk)
     
     @staticmethod
-    def rand(shape, backend="numpy", dtype=None):
+    def rand(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix with random values uniformly distributed in [0, 1).
         
@@ -1944,6 +2097,7 @@ class Matrix(Object):
             shape (tuple): The shape of the matrix.
             backend (str): The backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Matrix: A new matrix with random values.
@@ -1956,7 +2110,7 @@ class Matrix(Object):
         elif bk == "torch":
             if torch is None:
                 raise ImportError("PyTorch is not installed.")
-            data = torch.rand(shape, dtype=dtype) if dtype else torch.rand(shape)
+            data = torch.rand(shape, dtype=dtype, device=device) if dtype else torch.rand(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
         return Matrix(data, backend=bk)

@@ -26,7 +26,8 @@ class LRTW(LR, BaseTree):
     
     __attr__ = "MML.MRTW"
     
-    def __init__(self, task: str = 'regression', 
+    def __init__(self, 
+                 task: str = 'regression', 
                  tree_id: int = None, 
                  family: str = "gaussian",
                  fit_intercept: bool = True, 
@@ -70,10 +71,15 @@ class LRTW(LR, BaseTree):
                 **kwargs: other key word arguments, reserved for compatibility use.
         """
         # Initialize the base classes
-        LR.__init__(self, family=family, fit_intercept=fit_intercept, use=use,
+        LR.__init__(self, task=task, family=family, fit_intercept=fit_intercept, use=use,
                     cov = cov, tol = tol, lr = lr, max_iter = max_iter, batch_size = batch_size,
                     shuffle = shuffle, l1 = l1, l2 = l2, random_state = random_state, **kwargs)
         BaseTree.__init__(self, feature_names = feature_names, **kwargs)        
+        
+        # Record the task
+        self.task = task.lower()
+        if self.task not in ("regression", "classification"):
+            raise ValueError("Unsupported task. Choose 'regression' or 'classification'.")
         
         # KWargs Accepted
         self.kwargs = kwargs
@@ -91,9 +97,6 @@ class LRTW(LR, BaseTree):
         
         # Task and Loss Check
         self.tree_id = tree_id if tree_id is not None else 0
-        self.task = task.lower()
-        if self.task not in ("regression", "classification"):
-            raise ValueError("Unsupported task. Choose 'regression' or 'classification'.")
             
         # Special Inverse Feature Index Map
         # Why?
@@ -170,6 +173,19 @@ class LRTW(LR, BaseTree):
             X: Matrix | Tensor, the feature matrix (each row is a sample).
             y: Matrix | Tensor, the target values (for regression, numerical; for classification, one-hot or multi-label).
             use_features_idx, Matrix| Tensor | tuple | list of indices or None (all features)
+            
+            Complex fitting supportted but implicitly.
+            Optional:
+                verbosity: int | None, if >= 1 and having `evalset`, then will report metrics each batch.
+                evalset: Dict[name : Tuple[X, y],
+                              ...], | None, if provided, it may be used as evaluation set. XGBoost style.
+                evalmetrics: list of str | str | None, metrics used to do the evaluation. Will be printed.
+                early_stop: int | None, if non-None, then if metrics NOT gained for `early_stop` times, the forest will stop training.
+                early_stop_logic: str, the logic when deciding on multiple metrics, can be {"any", "some", "most", "all"}.
+                continue_to_train: bool | None, if non-None and True, the machine will try to restore the place it was and continue
+                                   to train new estimators until a new stopping criterion meets or until reaches the max number of allowed estimators.
+                val_per_iter: int, the number of iterations to do, before next evaluation happens, recommend 20, 50.
+                
         
         Returns:
             self
@@ -185,7 +201,7 @@ class LRTW(LR, BaseTree):
             raise ValueError("Input feature `X` must be a tabular data with two dimensions.")
         if len(y.shape) == 1:
             raise ValueError("Input target `y` must also be a 2d data. If only one label or value, use data.reshape([-1, 1])")
-                    
+                           
         # Record the unsliced original X and y
         self.original_X = X.copy()
         self.original_y = y.copy()
@@ -290,7 +306,8 @@ def regression_test():
     
     backend = "numpy"
     
-    from sklearn.metrics import mean_squared_error as mse
+    from scaling import Scaling
+    from metrices import RegressionMetrics as regm
     from sklearn.datasets import load_diabetes
     from sklearn.model_selection import train_test_split
 
@@ -302,15 +319,20 @@ def regression_test():
     y_train = Matrix(y_train, backend=backend).reshape([-1, 1])
     X_test = Matrix(X_test, backend=backend)
     y_test = Matrix(y_test, backend=backend).reshape([-1, 1])
+    
+    # Train a scaler
+    scaler = Scaling("robust").fit(y_train)
+    y_train = scaler.transform(y_train)
+    y_test = scaler.transform(y_test)
 
     # Initialize the model with some parameters
     model = LRTW(
-        use = "Closed",
+        use = "GD",
         fit_intercept=True,
         cov=None,
         tol=1e-8,
-        lr=0.1,
-        max_iter=50000,
+        lr=0.02,
+        max_iter=10000,
         batch_size=None,
         shuffle=True,
         l1=0.0,
@@ -318,14 +340,15 @@ def regression_test():
     )
 
     # Train the model with training data
-    model.fit(X_train, y_train)
+    model.fit(X_train, y_train,
+              verbosity = 1, evalset = {"Test": (X_test, y_test)}, evalmetrics = ["mse", "rmse"])
 
     # Predict using test data and check if it returns a 2D array-like object of shape [-1, 1]
     predictions = model.predict(X_test)
     
     # Evaluate mse
-    mse_error = mse(y_test.flatten().data, predictions.flatten().data)
-    print(f"RMSE Error: {mse_error ** 0.5}")
+    rmse_error = regm(y_test, predictions, "rmse").compute()
+    print(f"RMSE Error: {rmse_error}")
     
     # Print the summary
     print(model.summary())
@@ -339,6 +362,7 @@ def random_forest_test():
     backend = "numpy"
     
     import pandas as pd
+    from scaling import Scaling
     from sklearn.metrics import mean_squared_error as mse
     from sklearn.datasets import load_diabetes
     from sklearn.model_selection import train_test_split
@@ -384,17 +408,22 @@ def random_forest_test():
     X_test = Matrix(X_test, backend=backend)
     y_test = Matrix(y_test, backend=backend).reshape([-1, 1])
     
+    # Train a scaler
+    scaler = Scaling("robust").fit(y_train)
+    y_train = scaler.transform(y_train)
+    y_test = scaler.transform(y_test)
+    
     from tree import CART
     from random_forest import RandomForest
     model = RandomForest(
                       task = "regression", agg_method = "mean",
-                      tree_type = CART,
+                      tree_type = LRTW,
                       n_estimators = 10,
                       n_workers = 2,
                       max_features = 0.6,
                       bootstrap_ratio = 1,
                       random_state = None,
-                      tree_kwargs = {"use": "Closed", "lr": 0.1, "l2": 0.0001,
+                      tree_kwargs = {"use": "Closed", "lr": 0.01, "l2": 0.0001,
                                      "max_iter": 20000, "max_depth": 10},
                       agg_kwargs = {})
     
@@ -410,4 +439,5 @@ def random_forest_test():
     
     # Plot average feature importance
     model.plot_feature_importances_average(8)
+    
     

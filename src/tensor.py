@@ -135,6 +135,25 @@ class Tensor(Object):
             return "cpu"
         else:
             return self.data.device.type
+        
+    @property
+    def requires_grad(self):
+        """
+        Retrieve whether it requires gradients or not
+        """
+        if self._is_numpy:
+            raise NotImplementedError("Autograd is not implemented in numpy backend.")
+        else:
+            return self.data.requires_grad
+        
+    def zero_grad(self):
+        """
+        Clear the Pytorch Gradient if any.
+        """
+        if self._is_numpy == False:
+            if self.data.grad is not None:
+                self.data.grad.zero_()
+        return self
     
     def reshape(self, shape):
         """
@@ -264,6 +283,54 @@ class Tensor(Object):
     def copy(self, *, backend=None, dtype=None, device=None):
         """
         Creates a deep copy of the current tensor with the specified backend and data type.
+        
+        Args:
+            backend (str): The backend for the copied matrix. Default is None.
+            dtype: Desired data type for the result. Default is None.
+            device: Device to which the tensor should be moved if applicable. Default is None.
+        
+        Returns:
+            Tensor: A deep copy of the current matrix with the specified parameters.
+        
+        """
+        if self._is_numpy:
+            if backend is None:
+                return Tensor(self.data.copy(), backend=self._backend, dtype=dtype, device=device)
+            else:
+                return Tensor(self.data.copy(), backend=backend, dtype=dtype, device=device)
+        else:
+            if backend is None:
+                return Tensor(self.data.clone().detach(), backend=self._backend, dtype=dtype, device=device)
+            else:
+                return Tensor(self.data.clone().detach(), backend=backend, dtype=dtype, device=device)
+    
+    def clone(self, *, backend=None, dtype=None, device=None):
+        """
+        Creates a deep copy of the current tensor with the specified backend and data type without detach.
+        
+        Args:
+            backend (str): The backend for the copied matrix. Default is None.
+            dtype: Desired data type for the result. Default is None.
+            device: Device to which the tensor should be moved if applicable. Default is None.
+        
+        Returns:
+            Tensor: A deep copy of the current matrix with the specified parameters.
+        
+        """
+        if self._is_numpy:
+            if backend is None:
+                return Tensor(self.data.copy(), backend=self._backend, dtype=dtype, device=device)
+            else:
+                return Tensor(self.data.copy(), backend=backend, dtype=dtype, device=device)
+        else:
+            if backend is None:
+                return Tensor(self.data.clone(), backend=self._backend, dtype=dtype, device=device)
+            else:
+                return Tensor(self.data.clone(), backend=backend, dtype=dtype, device=device)
+            
+    def clone_detach(self, *, backend=None, dtype=None, device=None):
+        """
+        Creates a deep copy of the current tensor with the specified backend and data type with detach.
         
         Args:
             backend (str): The backend for the copied matrix. Default is None.
@@ -438,6 +505,19 @@ class Tensor(Object):
         """
         return len(self.data)
     
+    def requires_grad_(self, requires_grad: bool = False):
+        """
+        Require gradients to be computed or not. Only support torch.tensor.
+        
+        Returns:
+            Tensor: A revised self tensor with gradients opt-in or opt-out.
+        """
+        if self._is_numpy:
+            raise NotImplementedError("Autograd is not implemented by numpy backend")
+        else:
+            self.data = self.data.requires_grad_(requires_grad)
+        return self
+    
     def unique(self):
         """
         Returns the unique values of the elements that are non-zero.
@@ -607,7 +687,7 @@ class Tensor(Object):
             if axis is None:
                 result = torch.min(self.data)
             else:
-                result = torch.min(self.data, dim=axis)
+                result, indices = torch.min(self.data, dim=axis)
         return Tensor(result, backend=self._backend)
     
     def max(self, axis = None):
@@ -630,7 +710,7 @@ class Tensor(Object):
             if axis is None:
                 result = torch.max(self.data)
             else:
-                result = torch.max(self.data, dim=axis)
+                result, indices = torch.max(self.data, dim=axis)
         return Tensor(result, backend=self._backend)
     
     def clip(self, a_min=None, a_max=None):
@@ -651,12 +731,13 @@ class Tensor(Object):
             result = torch.clip(self.data, min=a_min, max=a_max)
         return Tensor(result, backend=self._backend)
 
-    def sum(self, axis = None):
+    def sum(self, axis = None, keepdims = False):
         """
         Computes the sum of the Tensor along a specified axis.
         
         Args:
             axis (Optional[int]): Axis along which to compute the sum. If None, computes across all dimensions.
+            keepdims (bool): If keeps the dimension or not.
         
         Returns:
             Tensor: A new instance containing the computed sum values.
@@ -666,9 +747,9 @@ class Tensor(Object):
         
         """
         if self._is_numpy:
-            result = np.sum(self.data, axis=axis)
+            result = np.sum(self.data, axis=axis, keepdims=keepdims)
         else:
-            result = torch.sum(self.data, dim=axis)
+            result = torch.sum(self.data, dim=axis, keepdim=keepdims)
         return Tensor(result, backend=self._backend)
     
     def cumsum(self, axis = None):
@@ -691,12 +772,13 @@ class Tensor(Object):
             result = torch.cumsum(self.data, dim=axis)
         return Tensor(result, backend=self._backend)
     
-    def prod(self, axis = None):
+    def prod(self, axis = None, keepdims = False):
         """
         Computes the product of the Tensor along a specified axis.
         
         Args:
             axis (Optional[int]): Axis along which to compute the product. If None, computes across all dimensions.
+            keepdims (bool): If keeps the dimension or not.
     
         Returns:
             Tensor: A new instance containing the computed product values.
@@ -706,9 +788,9 @@ class Tensor(Object):
         
         """
         if self._is_numpy:
-            result = np.prod(self.data, axis=axis)
+            result = np.prod(self.data, axis=axis, keepdims=keepdims)
         else:
-            result = torch.prod(self.data, dim=axis)
+            result = torch.prod(self.data, dim=axis, keepdim=keepdims)
         return Tensor(result, backend=self._backend)
     
     def cumprod(self, axis = None):
@@ -768,6 +850,21 @@ class Tensor(Object):
         else:
             result = torch.special.gammaln(self.data)
         return Tensor(result, backend=self._backend) 
+    
+    def sigmoid(self):
+        """
+        Applies the standard sigmoid function element-wise on the input Matrix.
+        
+        f(x) = L / (1 + exp(-1*x))
+        
+        Returns:
+            Tensor: A new Tensor with the sigmoid function applied element-wise.
+        """
+        if self._is_numpy:
+            result = 1.0 / (1.0 + np.exp(-1.0 * self.data ))
+        else:
+            result = torch.sigmoid(self.data)
+        return Tensor(result, backend=self._backend)
     
     def logistic(self, L=1.0, k=1.0, x0=0.0):
         """
@@ -972,6 +1069,19 @@ class Tensor(Object):
             result = torch.log(self.data)
         return Tensor(result, backend=self._backend)
     
+    def relu(self):
+        """
+        Computes the element-wise ReLU function.
+        
+        Returns:
+            Tensor: New Tensor with ReLU applied.
+        """
+        if self._is_numpy:
+            result = np.clip(self.data, 0.0)
+        else:
+            result = torch.relu(self.data)
+        return Tensor(result, backend=self._backend)
+    
     def softmax(self, axis = 1, keepdims:bool | None = True):
         """
         Applies the softmax function along a specified axis.
@@ -1069,6 +1179,22 @@ class Tensor(Object):
         else:
             return Tensor(torch.flip(self.data, axis=axis), backend=self._backend)
 
+    def stack(self, *wargs, axis = 0):
+        """
+        Stack data in sequence on an axis.
+        
+        Returns:
+            Tensor: The stacked Tensor.
+        """
+        data_list = [self.data]
+        for arg in wargs:
+            data_list.append(arg.data)
+        if self._is_numpy:
+            result = np.stack(data_list, axis=axis)
+        else:
+            result = torch.stack(data_list, dim=axis)
+        return Tensor(result, backend=self._backend)
+
     def vstack(self, *wargs):
         """
         Stack data in sequence vertically (row wise).
@@ -1100,6 +1226,22 @@ class Tensor(Object):
         else:
             result = torch.hstack(data_list)
         return Tensor(result, backend=self._backend)
+
+    def split(self, split_size_or_sections, axis=0):
+        """
+        Splits the data into chunks. Each chunk is a copy of the original data.
+        
+        Returns:
+            A tuple of Tensors: The splitted tensors.
+        """
+        if self._is_numpy:
+            result = np.split(self.data, split_size_or_sections, axis=axis)
+        else:
+            result = torch.split(self.data, split_size_or_sections, dim=axis)
+        result = list(result)
+        for i, r in enumerate(result):
+            result[i] = Tensor(r, backend=self._backend) 
+        return tuple(result)
 
     def sign(self):
         """
@@ -1473,6 +1615,64 @@ class Tensor(Object):
                 Vh = V.t()
             return Tensor(U, backend="torch"), Tensor(s, backend="torch"), Tensor(Vh, backend="torch")
  
+    def to_zeros(self):
+        """
+        Converts the Tensor data into a same shape Tensor with 0s.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: a same shape Tensor with 0s.
+        
+        """
+        x = self.copy()
+        x[...] = 0
+        return x
+    
+    def to_ones(self):
+        """
+        Converts the Tensor data into a same shape Tensor with 1s.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: a same shape Tensor with 0s.
+        
+        """
+        x = self.copy()
+        x[...] = 1
+        return x
+    
+    def to_ks(self, k: float | int = 0):
+        """
+        Converts the Tensor data into a same shape Tensor with ks.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: a same shape Tensor with 1s.
+        
+        """
+        x = self.copy()
+        x[...] = k
+        return x
+    
+    def to_rands(self):
+        """
+        Converts the Tensor data into a same shape Tensor with uniform random numbers.
+        
+        Args: 
+            None
+        
+        Returns:
+            Tensor: a same shape Tensor with uniform random numbers.
+        
+        """
+        return self.rand(self.shape, backend=self._backend, dtype=self.dtype, device=self.device)
+
     def to_list(self):
         """
         Converts the Tensor data into a Python list.
@@ -1542,7 +1742,25 @@ class Tensor(Object):
             raise ValueError("Input `x` and `other` for comparison must have to have the same backend!")
     
     @staticmethod
-    def where(condition, backend="numpy", dtype=None):
+    def gather_along(data, axis, index):
+        """
+        Gather values on an axis with specified index.
+        
+        Parameters:
+            axis: int, the axis number to gather values on.
+            index: list | array | Matrix, the indices for each row/column/.. to gather values on.
+        
+        Returns:
+            Tensor: gathered elements.
+        """
+        if data._is_numpy:
+            result = np.take_along_axis(data.data, indices=index, axis=axis)
+        else:
+            result = torch.gather(data.data, dim=axis, index=index.data)
+        return Tensor(result, backend=data._backend, dtype=data.dtype, device=data.device)
+    
+    @staticmethod
+    def where(condition, backend="numpy", dtype=None, device=None):
         """
         Returns elements depending on `condition`.
         
@@ -1558,10 +1776,29 @@ class Tensor(Object):
             result, = torch.where(condition)
             if isinstance(result, tuple):
                 result = result[0]
-        return Tensor(result, backend=backend, dtype=dtype)
+        return Tensor(result, backend=backend, dtype=dtype, device=device)
+    
+    @staticmethod
+    def where_as(condition, then, other, backend="numpy", dtype=None, device=None):
+        """
+        Returns elements depending on `condition`.
+        
+        Parameters:
+            condition : Internal Type (array_like); bool Where True
+        
+        Returns:
+            Tensor: if true then applied then to true elements; other to fales elements.
+        """
+        if backend == "numpy":
+            result = np.where(condition, then, other)
+        else:
+            result = torch.where(condition, then, other)         
+            if isinstance(result, tuple):
+                result = result[0]
+        return Tensor(result, backend=backend, dtype=dtype, device=device)
         
     @staticmethod
-    def zeros(shape, backend="numpy", dtype=None):
+    def zeros(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a tensor filled with zeros.
         
@@ -1569,23 +1806,21 @@ class Tensor(Object):
             shape (tuple): Desired shape.
             backend (str): Backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Tensor: New tensor of zeros.
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.zeros(shape, dtype=dtype)
-        elif bk == "torch":
-            if torch is None:
-                raise ImportError("PyTorch is not installed.")
-            data = torch.zeros(shape, dtype=dtype)
+        elif backend == "torch":
+            data = torch.zeros(shape, dtype=dtype, device=device) if dtype else torch.zeros(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Tensor(data, backend=bk)
+        return Tensor(data, backend=backend)
 
     @staticmethod
-    def ones(shape, backend="numpy", dtype=None):
+    def ones(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a tensor filled with ones.
         
@@ -1593,23 +1828,21 @@ class Tensor(Object):
             shape (tuple): Desired shape.
             backend (str): Backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Tensor: New tensor of ones.
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.ones(shape, dtype=dtype)
-        elif bk == "torch":
-            if torch is None:
-                raise ImportError("PyTorch is not installed.")
-            data = torch.ones(shape, dtype=dtype)
+        elif backend == "torch":
+            data = torch.ones(shape, dtype=dtype, device=device) if dtype else torch.ones(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Tensor(data, backend=bk)
+        return Tensor(data, backend=backend)
     
     @staticmethod
-    def zeros_like(x, backend="numpy", dtype=None):
+    def zeros_like(x, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix of zeros with the same shape and data type as another matrix.
         
@@ -1617,6 +1850,7 @@ class Tensor(Object):
             x (Tensor): The input matrix.
             backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
             dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+            device: Data device, "cpu" or "cuda".
         
         Returns:
             Tensor: A new Tensor containing zeros with the same shape and type as `x`.
@@ -1625,17 +1859,16 @@ class Tensor(Object):
             ValueError: If an unsupported backend is provided.
         
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.zeros_like(x.data, dtype=dtype)
-        elif bk == "torch":
-            data = torch.zeros_like(x.data, dtype=dtype)
+        elif backend == "torch":
+            data = torch.zeros_like(x.data, dtype=dtype, device=device) if dtype else torch.zeros_like(x.data, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Tensor(data, backend=bk)
+        return Tensor(data, backend=backend)
     
     @staticmethod
-    def ones_like(x, backend="numpy", dtype=None):
+    def ones_like(x, backend="numpy", dtype=None, device=None):
         """
         Creates a matrix of ones with the same shape and data type as another matrix.
         
@@ -1643,6 +1876,7 @@ class Tensor(Object):
             x (Tensor): The input matrix.
             backend (str): The backend for computation ("numpy" or "torch"). Default is "numpy".
             dtype: Desired data type for the result. If not specified, uses the data type from `x`.
+            device: Data device, "cpu" or "cuda".
         
         Returns:
             Tensor: A new Tensor containing ones with the same shape and type as `x`.
@@ -1651,17 +1885,16 @@ class Tensor(Object):
             ValueError: If an unsupported backend is provided.
         
         """
-        bk = backend.lower()
-        if bk == "numpy":
+        if backend == "numpy":
             data = np.ones_like(x.data, dtype=dtype)
-        elif bk == "torch":
-            data = torch.ones_like(x.data, dtype=dtype)
+        elif backend == "torch":
+            data = torch.ones_like(x.data, dtype=dtype, device=device) if dtype else torch.ones_like(x.data, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
-        return Tensor(data, backend=bk)
+        return Tensor(data, backend=backend)
     
     @staticmethod
-    def rand(shape, backend="numpy", dtype=None):
+    def rand(shape, backend="numpy", dtype=None, device=None):
         """
         Creates a tensor with random values uniformly distributed in [0, 1).
         
@@ -1669,6 +1902,7 @@ class Tensor(Object):
             shape (tuple): Desired shape.
             backend (str): Backend ("numpy" or "torch").
             dtype: Desired data type.
+            device: Data device, "cpu" or "cuda".
             
         Returns:
             Tensor: New tensor with random values.
@@ -1681,7 +1915,7 @@ class Tensor(Object):
         elif bk == "torch":
             if torch is None:
                 raise ImportError("PyTorch is not installed.")
-            data = torch.rand(shape, dtype=dtype) if dtype else torch.rand(shape)
+            data = torch.rand(shape, dtype=dtype, device=device) if dtype else torch.rand(shape, device=device)
         else:
             raise ValueError("Unsupported backend. Choose 'numpy' or 'torch'.")
         return Tensor(data, backend=bk)

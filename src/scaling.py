@@ -12,8 +12,10 @@ except ImportError:
 from matrix import Matrix
 from tensor import Tensor
 
+from baseml import MLBase
+
 # Implementation of Data Scaler
-class Scaling:
+class Scaling(MLBase):
     """
     Scale class that fits on a Matrix and can perform either centralization (subtracting the mean)
     or min-max scaling (scaling features to the [0, 1] range), with the ability to reverse the operation.
@@ -31,6 +33,9 @@ class Scaling:
                 "robust": compute median and interquartile range to reduce the effect of outliers.
             `robust_p` the lower percentile [0,1] of the percentile estimate. 0.25 means 25% and 75%
         '''
+        super().__init__()
+        
+        # Record the method and parameters
         self.method = method
         self.params = {}
         

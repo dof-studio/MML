@@ -22,7 +22,22 @@ class BaseMetrics:
         pass
     
     def compute(self):
+        """
+        Compute the specified metric for the predictions given true data.
+        """
         raise NotImplementedError("Compute is NOT implemented in the base class.")
+        
+    def deriv_1(self):
+        """
+        Compute the sample-wise 1st order derivatives of metric for the predictions given true data.
+        """
+        raise NotImplementedError("Deriv_1 is NOT implemented in the base class.")
+        
+    def deriv_2(self):
+        """
+        Compute the sample-wise 2nd order derivatives of metric for the predictions given true data.
+        """
+        raise NotImplementedError("Deriv_2 is NOT implemented in the base class.")
     
     def __repr__(self):
         return "BaseMetrics(Abstract Class)."
@@ -38,8 +53,16 @@ class RegressionMetrics(BaseMetrics):
         - RMSE (Root Mean Squared Error) 
         - MAE (Mean Absolute Error)
         - MAPE (Mean Absolute Percentage Error)
+        - Huber Loss
+        - Quantile Loss
+        - WMSE (Weighted Mean Squared Error)
+        - WRMSE (Weighted Root Mean Squared Error)
         - R^2 (R Square)
         - Adjusted R^2 (Adjusted R Square)
+        
+    Special metrics:
+        - Negative R^2 (R Square)
+        - Negative Adjusted R^2 (Adjusted R Square)
         
     The computations are performed using the underlying tensor operations, maintaining
     compatibility with both numpy and torch backends.
@@ -52,14 +75,15 @@ class RegressionMetrics(BaseMetrics):
     
     __attr__ = "MML.RegressionMetrics"
     
-    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str, k: int | None = None):
+    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str, k: int | None = None, **kwargs):
         """
         Initializes the RegressionMetrics instance with result and target tensors.
         
         Args:
             result (Tensor | Matrix): Predicted results tensor
             target (Tensor | Matrix): Target values tensor
-            metric_type (str): Metric type to compute ('mse', 'rmse', 'mae', 'mape', 'r2', 'adjusted r2')
+            metric_type (str): Metric type to compute ('mse', 'rmse', 'mae', 'mape', 'huber_loss', 'quantile_loss', 
+                              'wmse', 'wrmse', 'r2', 'adjusted r2', 'nr2', 'nadjusted r2')
             k (int): Number of predictors (parameters) in the model, only used in Adjusted R2.
         """
         super().__init__()
@@ -82,110 +106,290 @@ class RegressionMetrics(BaseMetrics):
         if not self.result.shape == self.target.shape:
             raise ValueError("Result and target tensors must have the same shape.")
             
-    def compute(self) -> Tensor | Matrix:
+    def compute(self, **kwargs) -> Tensor | Matrix:
         """
         Computes the specified regression metric between result and target.
         
-        Returns:
-            Tensor | Matrix: The computed metric value as a tensor
-        """
-        if self.metric_type == 'mse':
-            return self._compute_mse()
-        elif self.metric_type == 'rmse':
-            return self._compute_rmse()
-        elif self.metric_type == 'mae':
-            return self._compute_mae()
-        elif self.metric_type == 'mape':
-            return self._compute_mape()
-        elif self.metric_type == 'r2':
-            return self._compute_r2()
-        elif self.metric_type == 'adjusted r2':
-            return self._compute_adjusted_r2()
-        else:
-            raise ValueError(f"Unsupported metric type: {self.metric_type}")
-    
-    def deriv_1(self) -> Tensor | Matrix:
-        """
-        Computes the 1st order derivative of the specified regression metric between result and target.
+        Args:
+            **kwargs: Other arguments supported by metrics.
         
         Returns:
             Tensor | Matrix: The computed metric value as a tensor
         """
         if self.metric_type == 'mse':
-            return self._deriv_1_mse()
+            return self._compute_mse(**kwargs)
         elif self.metric_type == 'rmse':
-            return self._deriv_1_rmse()
+            return self._compute_rmse(**kwargs)
         elif self.metric_type == 'mae':
-            return self._deriv_1_mae()
+            return self._compute_mae(**kwargs)
         elif self.metric_type == 'mape':
-            return self._deriv_1_mape()
+            return self._compute_mape(**kwargs)
+        elif self.metric_type == 'huber_loss':
+            return self._compute_huber_loss(**kwargs)
+        elif self.metric_type == 'quantile_loss':
+            return self._compute_quantile_loss(**kwargs)
+        elif self.metric_type == 'wmse':
+            return self._compute_wmse(**kwargs)
+        elif self.metric_type == 'wrmse':
+            return self._compute_wrmse(**kwargs)
         elif self.metric_type == 'r2':
-            return ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+            return self._compute_r2(**kwargs)
         elif self.metric_type == 'adjusted r2':
-            return ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+            return self._compute_adjusted_r2(**kwargs)
+        # Special Metrics
+        elif self.metric_type == 'nr2':
+            return - self._compute_r2(**kwargs)
+        elif self.metric_type == 'nadjusted r2':
+            return - self._compute_adjusted_r2(**kwargs)
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
     
-    def deriv_2(self) -> Tensor | Matrix:
+    def deriv_1(self, **kwargs) -> Tensor | Matrix:
         """
-        Computes the 2nd order derivative of the specified regression metric between result and target.
+        Computes the sample-wise 1st order derivative of the specified regression metric between result and target.
+        
+        Args:
+            **kwargs: Other arguments supported by metrics.
         
         Returns:
-            Tensor | Matrix: The computed metric value as a tensor
+            Tensor | Matrix: The computed gradient vector as a matrix or a tensor
         """
         if self.metric_type == 'mse':
-            return self._deriv_2_mse()
+            return self._deriv_1_mse(**kwargs)
         elif self.metric_type == 'rmse':
-            return self._deriv_2_rmse()
+            return self._deriv_1_rmse(**kwargs)
         elif self.metric_type == 'mae':
-            return self._deriv_2_mae()
+            return self._deriv_1_mae(**kwargs)
         elif self.metric_type == 'mape':
-            return self._deriv_2_mape()
+            return self._deriv_1_mape(**kwargs)
+        elif self.metric_type == 'huber_loss':
+            return self._deriv_1_huber_loss(**kwargs)
+        elif self.metric_type == 'quantile_loss':
+            return self._deriv_1_quantile_loss(**kwargs)
+        elif self.metric_type == 'wmse':
+            return self._deriv_1_wmse(**kwargs)
+        elif self.metric_type == 'wrmse':
+            return self._deriv_1_wrmse(**kwargs)
         elif self.metric_type == 'r2':
-            return ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
         elif self.metric_type == 'adjusted r2':
-            return ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Special Metrics
+        elif self.metric_type == 'nr2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'nadjusted r2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
         else:
-            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+            raise  ValueError(f"Unsupported metric type: {self.metric_type}")
     
-    def _compute_mse(self) -> Tensor | Matrix:
+    def deriv_2(self, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the sample-wise 2nd order derivative of the specified regression metric between result and target.
+        
+        Args:
+            **kwargs: Other arguments supported by metrics.
+        
+        Returns:
+            Tensor | Matrix: The computed hessian matrix (without cross terms) as a matrix or a tensor
+        """
+        if self.metric_type == 'mse':
+            return self._deriv_2_mse(**kwargs)
+        elif self.metric_type == 'rmse':
+            return self._deriv_2_rmse(**kwargs)
+        elif self.metric_type == 'mae':
+            return self._deriv_2_mae(**kwargs)
+        elif self.metric_type == 'mape':
+            return self._deriv_2_mape(**kwargs)
+        elif self.metric_type == 'huber_loss':
+            return self._deriv_2_huber_loss(**kwargs)
+        elif self.metric_type == 'quantile_loss':
+            return self._deriv_2_quantile_loss(**kwargs)
+        elif self.metric_type == 'wmse':
+            return self._deriv_2_wmse(**kwargs)
+        elif self.metric_type == 'wrmse':
+            return self._deriv_2_wrmse(**kwargs)
+        elif self.metric_type == 'r2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'adjusted r2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Special Metrics
+        elif self.metric_type == 'nr2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'nadjusted r2':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        else:
+            raise  ValueError(f"Unsupported metric type: {self.metric_type}")
+        
+    def _compute_mse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
         """
         Computes the Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
         
         Returns:
             Tensor | Matrix: MSE tensor or matrix
         """
         error = (self.result - self.target)
         squared_error = error ** 2
-        mean_squared_error = squared_error.sum() / squared_error.shape[0]
+        if axis is None:
+            mean_squared_error = squared_error.sum(axis = axis) / np.array(squared_error.shape).prod()
+        else:
+            mean_squared_error = squared_error.sum(axis = axis) / squared_error.shape[axis]
         return mean_squared_error
     
-    def _compute_rmse(self) -> Tensor | Matrix:
+    def _deriv_1_mse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Derivative of MSE tensor or matrix with respect to result.
+        """
+        error = self.result - self.target
+        grad = 2 * error / error.shape[0]
+        if axis is None:
+            grad = 2 * error / np.array(error.shape).prod()
+        else:
+            grad = 2 * error / error.shape[axis]
+        return grad
+    
+    def _deriv_2_mse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative (Hessian diagonal) of the Mean Squared Error between result and target.
+    
+        Args:
+            only_diag: bool, if True, only calculate the diagonal vector and return,
+                             else, return the full hessian matrix.
+    
+        Returns:
+            Tensor | Matrix: Constant Hessian of MSE (2/N) with the same shape as result.
+        """
+        ones = self.result.copy(); ones[...] = 1;
+        if axis is None:
+            return ones * (2.0 / np.array(self.result.shape).prod())
+        else:
+            return ones * (2.0 / self.result.shape[axis])
+    
+    def _compute_rmse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
         """
         Computes the Root Mean Squared Error between result and target.
         
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+                
         Returns:
             Tensor | Matrix: RMSE tensor or matrix
         """
         error = (self.result - self.target)
         squared_error = error ** 2
-        mean_squared_error = squared_error.sum() / squared_error.shape[0]
+        if axis is None:
+            mean_squared_error = squared_error.sum(axis = axis) / np.array(squared_error.shape).prod()
+        else:
+            mean_squared_error = squared_error.sum(axis = axis) / squared_error.shape[axis]
         rmse = mean_squared_error ** 0.5
         return rmse
     
-    def _compute_mae(self) -> Tensor | Matrix:
+    def _deriv_1_rmse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Root Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Derivative of RMSE tensor or matrix with respect to result.
+        """
+        error = self.result - self.target
+        squared_error = error ** 2
+        if axis is None:
+            mean_squared_error = squared_error.sum(axis = axis) / np.array(squared_error.shape).prod()
+            rmse = mean_squared_error ** 0.5
+            grad = error / (np.array(squared_error.shape).prod() * rmse)
+        else:
+            mean_squared_error = squared_error.sum(axis = axis) / squared_error.shape[axis]
+            rmse = mean_squared_error ** 0.5
+            grad = error / (error.shape[axis] * rmse)
+
+        return grad
+    
+    def _deriv_2_rmse(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of the Root Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Second-order derivative (Hessian diagonal) of RMSE with respect to result.
+        """
+        error = self.result - self.target
+        squared_error = error ** 2
+        if axis is None:
+            sum_squared = squared_error.sum(axis = axis)
+            mean_squared_error = sum_squared / np.array(squared_error.shape).prod()
+            rmse = mean_squared_error ** 0.5
+            hessian = (sum_squared - squared_error) / ((np.array(squared_error.shape).prod() ** 2) * (rmse ** 3))
+        else:
+            sum_squared = squared_error.sum(axis = axis)
+            mean_squared_error = sum_squared / squared_error.shape[axis]
+            rmse = mean_squared_error ** 0.5
+            hessian = (sum_squared - squared_error) / ((error.shape[axis] ** 2) * (rmse ** 3))
+        
+        return hessian
+    
+    def _compute_mae(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
         """
         Computes the Mean Absolute Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
         
         Returns:
             Tensor | Matrix: MAE tensor or matrix
         """
         error = (self.result - self.target)
         absolute_error = error.abs()
-        mean_absolute_error = absolute_error.sum() / absolute_error.shape[0]
+        if axis is None:
+            mean_absolute_error = absolute_error.sum(axis = axis) / np.array(absolute_error.shape).prod()
+        else:
+            mean_absolute_error = absolute_error.sum(axis = axis) / absolute_error.shape[axis]
         return mean_absolute_error
+
+    def _deriv_1_mae(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Mean Absolute Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Derivative of MAE tensor or matrix with respect to result.
+        """
+        error = self.result - self.target
+        grad = error.sign() / error.shape[0]
+        if axis is None:
+            grad = error.sign() / np.array(error.shape).prod()
+        else:
+            grad = error.sign() / error.shape[axis]
+        return grad
     
-    def _compute_mape(self) -> Tensor | Matrix:
+    def _deriv_2_mae(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of per-output MAE between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+                
+        Returns:
+            Tensor | Matrix: Hessian diagonal of MAE (zero), shape (N, D).
+        """
+        zeros = self.result.copy(); zeros[...] = 0;
+        return zeros
+    
+    def _compute_mape(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
         """
         Computes the Mean Absolute Percentage Error between result and target.
         
@@ -193,17 +397,349 @@ class RegressionMetrics(BaseMetrics):
         gracefully by the underlying tensor operations, but users should ensure 
         target values are non-zero when using MAPE.
         
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
         Returns:
             Tensor | Matrix: MAPE tensor or matrix
         """
         error = (self.result - self.target) / self.target
         absolute_percentage_error = error.abs()
-        mean_absolute_percentage_error = absolute_percentage_error.sum() / absolute_percentage_error.shape[0]
+        if axis is None:
+            mean_absolute_percentage_error = absolute_percentage_error.sum(axis = axis) / np.array(absolute_percentage_error.shape).prod()
+        else:
+            mean_absolute_percentage_error = absolute_percentage_error.sum(axis = axis) / absolute_percentage_error.shape[axis]
         return mean_absolute_percentage_error
+
+    def _deriv_1_mape(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Mean Absolute Percentage Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Derivative of MAPE tensor or matrix with respect to result.
+        """
+        # Derivative: sign(ratio) * (1/target) / N
+        ratio = (self.result - self.target) / self.target
+        if axis is None:
+            grad = ratio.sign() / (self.target * np.array(ratio.shape).prod())
+        else:
+            grad = ratio.sign() / (self.target * ratio.shape[axis])
+        return grad
     
-    def _compute_r2(self) -> Tensor | Matrix:
+    def _deriv_2_mape(self, axis: int | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of per-output MAPE between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+                
+        Returns:
+            Tensor | Matrix: Hessian diagonal of MAPE (zero), shape (N, D).
+        """
+        zeros = self.result.copy(); zeros[...] = 0;
+        return zeros
+    
+    def _compute_huber_loss(self, axis: int | None = None, delta: float = 1.0, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the Huber Loss between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Huber Loss tensor or matrix
+        """
+        error = self.result - self.target
+        abs_error = error.abs()
+        # The mask is in an INTERNAL format (np/torch)
+        small_mask = abs_error.data <= delta
+        
+        # The squared region: 0.5 * e^2
+        sq_loss = 0.5 * (error ** 2)
+        # The linear region: delta * (|e| - 0.5 * delta)
+        lin_loss = delta * (abs_error - 0.5 * delta)
+        
+        # Huber loss is a combinition of mse and mae
+        if self.result._is_numpy:
+            huber = np.where(small_mask, sq_loss.data, lin_loss.data)
+        else:
+            huber = torch.where(small_mask, sq_loss.data, lin_loss.data)
+        
+        if axis is None:
+            return type(self.result)(huber, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device).sum(axis = axis) / np.array(error.shape).prod()
+        else:
+            return type(self.result)(huber, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device).sum(axis = axis) / error.shape[axis]
+    
+    def _deriv_1_huber_loss(self, axis: int | None = None, delta: float = 1.0, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Huber Loss between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            delta: float, the Huber threshold parameter.
+        
+        Returns:
+            Tensor | Matrix: Derivative of Huber Loss tensor or matrix with respect to result.
+        """
+        error = self.result - self.target
+        abs_error = error.abs()
+        # The mask is in an INTERNAL format (np/torch)
+        small_mask = abs_error.data <= delta
+        
+        if self.result._is_numpy:
+            grad_elt = np.where(small_mask, error.data, delta * error.sign().data)
+        else:
+            grad_elt = torch.where(small_mask, error.data, delta * error.sign().data)
+        
+        if axis is None:
+            return type(self.result)(grad_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / np.array(error.shape).prod()
+        else:
+            return type(self.result)(grad_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / error.shape[axis]
+
+    def _deriv_2_huber_loss(self, axis: int | None = None, delta: float = 1.0, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative (Hessian diagonal) of the Huber Loss between result and target.
+
+        Args:
+            axis: None or int, if you intend to get per-output metrics/derivs, set axis = 0. Else None.
+            delta: float, the Huber threshold parameter.
+            
+        Returns:
+            Tensor | Matrix: Second-order derivative of Huber Loss wrt result, shape like result.
+        """
+        error = self.result - self.target
+        abs_error = error.abs()
+        # The mask is in an INTERNAL format (np/torch)
+        small_mask = abs_error.data <= delta
+
+        if self.result._is_numpy:
+            hess_elt = small_mask.astype(float)
+        else:
+            # torch.where on a boolean mask: 1.0 where small, else 0.0
+            one = error.ones(error.shape, backend=self.result._backend).to(backend=self.result._backend, dtype=self.result.dtype, device=self.result.device)
+            zero = error.zeros(error.shape, backend=self.result._backend).to(backend=self.result._backend, dtype=self.result.dtype, device=self.result.device)
+            hess_elt = torch.where(small_mask, one.data, zero.data)
+
+        if axis is None:
+            return type(self.result)(hess_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / np.array(error.shape).prod()
+        else:
+            return type(self.result)(hess_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / error.shape[axis]
+
+    def _compute_quantile_loss(self, axis: int | None = None, q: float = 0.5, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the Quantile Loss between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+        
+        Returns:
+            Tensor | Matrix: Quantile Loss tensor or matrix
+        """
+        error = self.result - self.target
+        if self.result._is_numpy:
+            loss = np.where(error.data >= 0, q * error.data, (q - 1) * error.data)
+        else:
+            loss = torch.where(error.data >= 0, q * error.data, (q - 1) * error.data)
+        
+        if axis is None:
+            return type(self.result)(loss, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device).sum(axis = axis) / np.array(error.shape).prod()
+        else:
+            return type(self.result)(loss, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device).sum(axis = axis) / error.shape[axis]
+
+    def _deriv_1_quantile_loss(self, axis: int | None = None, q: float = 0.5, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Quantile Loss between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get per-output metrics/derivs, set axis = 0. Else None.
+            q: float in (0,1), the quantile level.
+            
+        Returns:
+            Tensor | Matrix: Derivative of Quantile Loss tensor or matrix with respect to result.
+        """
+        error = self.result - self.target
+        if self.result._is_numpy:
+            grad_elt = np.where(error.data >= 0, q, q - 1)
+        else:
+            grad_elt = torch.where(error.data >= 0, q, q - 1)
+
+        if axis is None:
+            return type(self.result)(grad_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / np.array(error.shape).prod()
+        else:
+            return type(self.result)(grad_elt, backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / error.shape[axis]
+
+    def _deriv_2_quantile_loss(self, axis: int | None = None, q: float = 0.5, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative (Hessian diagonal) of the Quantile Loss between result and target.
+
+        Args:
+            axis: None or int, if you intend to get per-output metrics/derivs, set axis = 0. Else None.
+            q: float in (0,1), the quantile level.
+            
+        Returns:
+            Tensor | Matrix: Second-order derivative of Quantile Loss wrt result, shape like result (all zeros).
+        """
+        error = self.result - self.target
+        
+        if axis is None:
+            return error.zeros_like(error).to(backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / np.array(error.shape).prod()
+        else:
+            return error.zeros_like(error).to(backend=self.result._backend, dtype=self.result.dtype, device=self.result.device) / error.shape[axis]
+
+    def _compute_wmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the Weighted Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal mse.
+        
+        Returns:
+            Tensor | Matrix: MSE tensor or matrix
+        """
+        if weights is None:
+            return self._compute_mse(axis = axis, **kwargs)
+        
+        error = (self.result - self.target)
+        squared_error = error ** 2
+        if axis is None:
+            mean_squared_error = (weights * squared_error).sum(axis = axis) / np.array(squared_error.shape).prod()
+        else:
+            mean_squared_error = (weights * squared_error).sum(axis = axis) / squared_error.shape[axis]
+        return mean_squared_error
+    
+    def _deriv_1_wmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Weighted Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal mse.
+        
+        Returns:
+            Tensor | Matrix: Derivative of MSE tensor or matrix with respect to result.
+        """
+        if weights is None:
+            return self._deriv_1_mse(axis = axis, **kwargs)
+        
+        error = self.result - self.target
+        grad = 2 * error / error.shape[0]
+        if axis is None:
+            grad = 2 * weights * error / np.array(error.shape).prod()
+        else:
+            grad = 2 * weights * error / error.shape[axis]
+        return grad
+    
+    def _deriv_2_wmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative (Hessian diagonal) of the Weighted Mean Squared Error between result and target.
+    
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal mse.
+            
+        Returns:
+            Tensor | Matrix: Constant Hessian of MSE (2/N) with the same shape as result.
+        """
+        if weights is None:
+            return self._deriv_2_mse(axis = axis, **kwargs)
+        
+        ones = self.result.copy(); ones[...] = 1;
+        if axis is None:
+            return ones * (2.0 * weights / np.array(self.result.shape).prod())
+        else:
+            return ones * (2.0 * weights / self.result.shape[axis])
+    
+    def _compute_wrmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the Weighted Root Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal rmse.
+            
+        Returns:
+            Tensor | Matrix: RMSE tensor or matrix
+        """
+        if weights is None:
+            return self._compute_rmse(axis = axis, **kwargs)
+        
+        error = (self.result - self.target)
+        squared_error = weights * error ** 2
+        if axis is None:
+            mean_squared_error = squared_error.sum(axis = axis) / np.array(squared_error.shape).prod()
+        else:
+            mean_squared_error = squared_error.sum(axis = axis) / squared_error.shape[axis]
+        rmse = mean_squared_error ** 0.5
+        return rmse
+    
+    def _deriv_1_wrmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the Weighted Root Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal rmse.
+            
+        Returns:
+            Tensor | Matrix: Derivative of RMSE tensor or matrix with respect to result.
+        """
+        if weights is None:
+            return self._deriv_1_rmse(axis = axis, **kwargs)
+        
+        error = self.result - self.target
+        squared_error = weights * error ** 2
+        if axis is None:
+            mean_squared_error = squared_error.sum(axis = axis) / np.array(squared_error.shape).prod()
+            rmse = mean_squared_error ** 0.5
+            grad = weights * error / (np.array(squared_error.shape).prod() * rmse)
+        else:
+            mean_squared_error = squared_error.sum(axis = axis) / squared_error.shape[axis]
+            rmse = mean_squared_error ** 0.5
+            grad = weights * error / (error.shape[axis] * rmse)
+
+        return grad
+    
+    def _deriv_2_wrmse(self, axis: int | None = None, weights: Matrix | Tensor | None = None, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of the Weighted Root Mean Squared Error between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
+            weights: Matrix or Tensor or None, if None, fail to normal rmse.
+            
+        Returns:
+            Tensor | Matrix: Second-order derivative (Hessian diagonal) of RMSE with respect to result.
+        """
+        if weights is None:
+            return self._deriv_2_rmse(axis = axis, **kwargs)
+        
+        error = self.result - self.target
+        squared_error = weights * error ** 2
+        if axis is None:
+            sum_squared = squared_error.sum(axis = axis)
+            mean_squared_error = sum_squared / np.array(squared_error.shape).prod()
+            rmse = mean_squared_error ** 0.5
+            N = np.array(squared_error.shape).prod()
+            hessian = weights / (N * rmse) - (weights **2 * error ** 2) / ((N ** 2) * (rmse ** 3))
+        else:
+            sum_squared = squared_error.sum(axis = axis)
+            mean_squared_error = sum_squared / squared_error.shape[axis]
+            rmse = mean_squared_error ** 0.5
+            N = error.shape[axis] 
+            hessian = weights / (N * rmse) - (weights **2 * error ** 2) / ((N ** 2) * (rmse ** 3))
+        
+        return hessian
+    
+    def _compute_r2(self, **kwargs) -> Tensor | Matrix:
         """
         Computes the coefficient of determination R^2 between result and target.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
         
         Returns:
             Tensor | Matrix: R^2 value.
@@ -221,9 +757,12 @@ class RegressionMetrics(BaseMetrics):
         r2 = 1 - (ss_res / ss_tot)
         return r2
     
-    def _compute_adjusted_r2(self) -> Tensor | Matrix:
+    def _compute_adjusted_r2(self, **kwargs) -> Tensor | Matrix:
         """
         Computes the adjusted R^2 value.
+        
+        Args:
+            axis: None or int, if you intend to get the per-output metrics/derivs, set axis = 0. Else None.
         
         Returns:
             Tensor | Matrix: Adjusted R^2 value.
@@ -239,9 +778,7 @@ class RegressionMetrics(BaseMetrics):
         n = self.target.shape[0]
         
         # Calculate adjusted R^2 using: 1 - (1-R^2)*((n-1)/(n-p-1))
-        adjusted_r2 = 1 - (
-            (1 - r2) * ((n - 1) /  (n - self.k - 1))
-        )
+        adjusted_r2 = 1 - ((1 - r2) * ((n - 1) /  (n - self.k - 1)))
         return adjusted_r2
     
     def __repr__(self):
@@ -249,6 +786,7 @@ class RegressionMetrics(BaseMetrics):
         String representation of the RegressionMetrics instance.
         """
         return f"RegressionMetrics(metric_type={self.metric_type}, shape={self.result.shape})"
+
 
 
 # Metrics for classfication (base)
@@ -280,7 +818,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         - tnr (True Negative Rate)
         - fpr (False Positive Rate)
         - fnr (False Negative Rate)
-        - logloss
+        - logloss (continuous)
     
     The computations are performed using the underlying tensor operations. It is assumed that both 
     the result and target are of the same type (Tensor or Matrix) and support similar operations.
@@ -295,7 +833,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
     
     __attr__ = "MML.BinaryClassificationMetrics"   
     
-    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str = "accuracy", threshold: float = 0.5):
+    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str = "accuracy", threshold: float = 0.5, **kwargs):
         """
         Initializes the BinaryClassificationMetrics instance with result and target tensors.
         
@@ -334,11 +872,11 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         Computes the specified metric for a given model or data.
     
         Args:
-            None
-    
+            **kwargs: Other arguments supported by metrics.
+            
         Returns:
             Matrix | Tensor: The computed metric value. The result is always returned as a Matrix or Tensor object,
-                                      even if the computation yields a scalar.
+                                      even if the computation yields a scalar.                            
         
         Raises:
             ValueError: If an unsupported metric type is provided.
@@ -346,29 +884,97 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         """
         # Note, all results are stored in a Matrix | Tensor even it is a scalar.
         if self.metric_type == 'accuracy':
-            return self._compute_accuracy()
+            return self._compute_accuracy(**kwargs)
         elif self.metric_type == 'precision':
-            return self._compute_precision()
+            return self._compute_precision(**kwargs)
         elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
-            return self._compute_recall()
+            return self._compute_recall(**kwargs)
         elif self.metric_type in ('f1', 'f1 score'):
-            return self._compute_f1()
+            return self._compute_f1(**kwargs)
         elif self.metric_type in ('specificity', 'tnr'):
-            return self._compute_specificity()
+            return self._compute_specificity(**kwargs)
         elif self.metric_type == 'fpr':
-            return self._compute_fpr()
+            return self._compute_fpr(**kwargs)
         elif self.metric_type == 'fnr':
-            return self._compute_fnr()
+            return self._compute_fnr(**kwargs)
         elif self.metric_type == 'auc_roc':
-            return self._compute_auc_roc()
+            return self._compute_auc_roc(**kwargs)
         elif self.metric_type == 'confusion_matrix':
-            return self._compute_confusion_matrix()
-        elif self.metric_type in ('logloss', 'entropy', 'cross-entropy'):
-            return self._compute_logloss()
+            return self._compute_confusion_matrix(**kwargs)
+        elif self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._compute_logloss(**kwargs)
         # Implemented by Nathmath Huang.
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
     
+    def deriv_1(self, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the sample-wise 1st order derivative for a given model or data.
+        
+        Args:
+            **kwargs: Other arguments supported by metrics.
+        
+        Returns:
+            Tensor | Matrix: The computed metric value as a tensor
+        """
+        # Note, all results are stored in a Matrix | Tensor even it is a scalar.
+        if self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._deriv_1_logloss(**kwargs)
+        elif self.metric_type == 'accuracy':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'precision':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('f1', 'f1 score'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('specificity', 'tnr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'fpr':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'fnr':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'auc_roc':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'confusion_matrix':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        else:
+            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+    
+    def deriv_2(self, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the sample-wise 2nd order derivative for a given model or data.
+        
+        Args:
+            **kwargs: Other arguments supported by metrics.
+        
+        Returns:
+            Tensor | Matrix: The computed metric value as a tensor
+        """
+        # Note, all results are stored in a Matrix | Tensor even it is a scalar.
+        if self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._deriv_2_logloss(**kwargs)
+        elif self.metric_type == 'accuracy':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'precision':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('f1', 'f1 score'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type in ('specificity', 'tnr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'fpr':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'fnr':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'auc_roc':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        elif self.metric_type == 'confusion_matrix':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        else:
+            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+            
     def _binarize(self, y_real_or_pred: Matrix | Tensor) -> Matrix | Tensor:
         """
         Binarizes continuous prediction scores by applying a threshold.
@@ -383,7 +989,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         # Return the results in a Matrix or Tensor of Booleans
         return self.typeclass(y_real_or_pred.data >= self.threshold, backend = y_real_or_pred._backend, device = y_real_or_pred.device)
     
-    def _compute_confusion_counts(self):
+    def _compute_confusion_counts(self, **kwargs):
         """
         Computes the counts of true positives (TP), true negatives (TN), 
                      false positives (FP) and false negatives (FN) using binarized predictions.
@@ -409,7 +1015,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
                 self.typeclass(FN, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
                 )
 
-    def _compute_accuracy(self):
+    def _compute_accuracy(self, **kwargs):
         """
         Computes accuracy = (TP + TN) / total.
         
@@ -425,7 +1031,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         total = TP + TN + FP + FN
         return (TP + TN) / total
 
-    def _compute_precision(self):
+    def _compute_precision(self, **kwargs):
         """
         Computes precision = TP / (TP + FP).
     
@@ -443,7 +1049,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return TP / denom
 
-    def _compute_recall(self):
+    def _compute_recall(self, **kwargs):
         """
         Computes recall (sensitivity) = TP / (TP + FN).
         
@@ -461,7 +1067,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return TP / denom
 
-    def _compute_f1(self):
+    def _compute_f1(self, **kwargs):
         """
         Computes the F1 score as the harmonic mean of precision and recall.
         
@@ -479,7 +1085,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return 2 * TP / denom
 
-    def _compute_specificity(self):
+    def _compute_specificity(self, **kwargs):
         """
         Computes specificity = TN / (TN + FP).
         
@@ -496,7 +1102,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return TN / denom
 
-    def _compute_tpr(self):
+    def _compute_tpr(self, **kwargs):
         """
         Computes recall (TPR) = TP / (TP + FN).
         
@@ -514,7 +1120,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return TP / denom
 
-    def _compute_tnr(self):
+    def _compute_tnr(self, **kwargs):
         """
         Computes specificity (TNR) = TN / (TN + FP).
         
@@ -531,7 +1137,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return TN / denom
 
-    def _compute_fpr(self):
+    def _compute_fpr(self, **kwargs):
         """
         Computes FPR = FP / (FP + TN).
         
@@ -549,7 +1155,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return FP / denom
 
-    def _compute_fnr(self):
+    def _compute_fnr(self, **kwargs):
         """
         Computes FNR = FN / (TP + FN).
         
@@ -566,7 +1172,7 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             return self.typeclass(0, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
         return FN / denom
 
-    def _compute_auc_roc(self):
+    def _compute_auc_roc(self, **kwargs):
         """
         Computes the area under the ROC curve (AUC-ROC) using the trapezoidal rule.
         This method assumes that self.result contains continuous prediction scores.
@@ -609,9 +1215,9 @@ class BinaryClassificationMetrics(ClassificationMetrics):
             prev_tpr = current_tpr
         return self.typeclass(auc, backend=self.target._backend, dtype=self.target.dtype, device=self.target.device)
 
-    def _compute_logloss(self):
+    def _compute_logloss(self, **kwargs):
         """
-        Computes the log loss between predicted and actual values.
+        Computes the binary classification log loss between predicted and actual values.
     
         Args: 
             None
@@ -627,7 +1233,41 @@ class BinaryClassificationMetrics(ClassificationMetrics):
         losses = -(labels * clipped_preds.log() + (1 - labels) * (1 - clipped_preds).log())
         return losses.mean()
 
-    def _compute_confusion_matrix(self):
+    def _deriv_1_logloss(self, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the binary classification log loss between predicted and actual values.
+
+        Args: 
+            None
+            
+        Returns:
+            Matrix | Tensor: Derivative of logloss with respect to the predictions.
+        """
+        epsilon = 1e-15
+        preds = self.result.to(self.result._backend, dtype=float)
+        labels = self.target.to(self.result._backend, dtype=float)
+        clipped = preds.clip(epsilon, 1 - epsilon)
+        grad = ((1 - labels) / (1 - clipped) - labels / clipped) / clipped.shape[0]
+        return grad
+    
+    def _deriv_2_logloss(self, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of the binary classification log loss between predicted and actual values.
+
+        Args: 
+            None
+            
+        Returns:
+            Matrix | Tensor: Second-order derivative (Hessian diagonal) of logloss with respect to the predictions.
+        """
+        epsilon = 1e-15
+        preds = self.result.to(self.result._backend, dtype=float)
+        labels = self.target.to(self.result._backend, dtype=float)
+        clipped = preds.clip(epsilon, 1 - epsilon)
+        hess = ((1 - labels) / (1 - clipped) ** 2 + labels / clipped ** 2) / clipped.shape[0]
+        return hess
+
+    def _compute_confusion_matrix(self, **kwargs):
         """
         Computes the confusion matrix as a 2x2 tensor or matrix with the format:
           [[TP, FP],
@@ -659,7 +1299,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         - precision        (macro-average computed either in one-vs-rest (OVR) or one-vs-one (OVO) mode)
         - recall           (macro-average computed either in OVR or OVO mode)
         - f1 score         (macro-average computed either in OVR or OVO mode)
-        - logloss          (cross-entropy loss)
+        - logloss          (cross-entropy loss, continuous)
         - confusion_matrix (of shape [n_classes, n_classes])
         
     The class is designed to support two scenarios:
@@ -684,7 +1324,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
     
     __attr__ = "MML.MultiClassificationMetrics"   
     
-    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str = "accuracy", n_classes: int = None, mode: str = "ovr"):
+    def __init__(self, result: Tensor | Matrix, target: Tensor | Matrix, metric_type: str = "accuracy", n_classes: int = None, mode: str = "ovr", **kwargs):
         """
         Initializes the MultiClassificationMetrics instance with result and target tensors.
         
@@ -742,7 +1382,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
                 # Error. The result dimension is not 2?!!
                 raise ValueError("The input `result` and `target` do not have a 2-dimension shape. Make sure it is a multi-classification problem. Set n_classes or resize the Matrix | Tensor if you only have one row.")
         
-    def compute(self, eps: float = 1e-15, floattype: type = float) -> Matrix | Tensor:
+    def compute(self, eps: float = 1e-15, floattype: type = float, **kwargs) -> Matrix | Tensor:
         """
         Computes the specified multi-class metric.
         
@@ -759,6 +1399,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         Args:
             eps: float, clip value to ensure 0/0 cases.
             floattype: type, the internal precision of calculation.
+            **kwargs: Other arguments supported by metrics.
     
         Returns:
             Matrix | Tensor: The computed metric value. The result is always returned as a Matrix or Tensor object,
@@ -771,41 +1412,118 @@ class MultiClassificationMetrics(ClassificationMetrics):
         # Note, all results are stored in a Matrix | Tensor even it is a scalar.
         # Accuracy
         if self.metric_type == 'accuracy':
-            return self._compute_accuracy(floattype=floattype)
+            return self._compute_accuracy(floattype=floattype, **kwargs)
         # Precision
         elif self.metric_type == 'precision':
             if self.mode == 'ovr':
-                return self._compute_precision_ovr(eps=eps, floattype=floattype)
+                return self._compute_precision_ovr(eps=eps, floattype=floattype, **kwargs)
             elif self.mode == 'ovo':
-                return self._compute_precision_ovo(eps=eps, floattype=floattype)
+                return self._compute_precision_ovo(eps=eps, floattype=floattype, **kwargs)
             else:
                 raise ValueError(f"Unsupported mode for precision: {self.mode}. Use `ovo` or `ovr`.")
         # Recall
         elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
             if self.mode == 'ovr':
-                return self._compute_recall_ovr(eps=eps, floattype=floattype)
+                return self._compute_recall_ovr(eps=eps, floattype=floattype, **kwargs)
             elif self.mode == 'ovo':
-                return self._compute_recall_ovo(eps=eps, floattype=floattype)
+                return self._compute_recall_ovo(eps=eps, floattype=floattype, **kwargs)
             else:
                 raise ValueError(f"Unsupported mode for recall: {self.mode}. Use `ovo` or `ovr`.")
         # F1 Score
         elif self.metric_type in ('f1', 'f1 score'):
             if self.mode == 'ovr':
-                return self._compute_f1_ovr(eps=eps, floattype=floattype)
+                return self._compute_f1_ovr(eps=eps, floattype=floattype, **kwargs)
             elif self.mode == 'ovo':
-                return self._compute_f1_ovo(eps=eps, floattype=floattype)
+                return self._compute_f1_ovo(eps=eps, floattype=floattype, **kwargs)
             else:
                 raise ValueError(f"Unsupported mode for f1: {self.mode}. Use `ovo` or `ovr`.")
         # Cross entropy/logloss
-        elif self.metric_type in ('logloss', 'entropy', 'cross-entropy'):
-            return self._compute_logloss(eps=eps, floattype=floattype)
+        elif self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._compute_logloss(eps=eps, floattype=floattype, **kwargs)
         # Confusion matrix
         elif self.metric_type == 'confusion_matrix':
-            return self._compute_confusion_matrix()
+            return self._compute_confusion_matrix(**kwargs)
         # Implemented by Nathmath Huang.
         else:
             raise ValueError(f"Unsupported metric type: {self.metric_type}")
     
+    def deriv_1(self, eps: float = 1e-15, floattype: type = float, **kwargs) -> Matrix | Tensor:
+        """
+        Computes the specified multi-class element-wise 1st order derivative.
+        
+        Supported metric_type values (case insensitive):
+            - 'logloss'
+        
+        Args:
+            eps: float, clip value to ensure 0/0 cases.
+            floattype: type, the internal precision of calculation.
+            **kwargs: Other arguments supported by metrics.
+    
+        Returns:
+            Matrix | Tensor: The computed metric value. The result is always returned as a Matrix or Tensor object,
+                                      even if the computation yields a scalar.
+        
+        Raises:
+            ValueError: If an unsupported metric type or mode type is provided.
+        """
+        
+        # Note, only "logloss" supports derivatives.
+        # Cross entropy/logloss
+        if self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._deriv_1_logloss(eps=eps, floattype=floattype, **kwargs)
+        # Accuracy
+        elif self.metric_type == 'accuracy':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Precision
+        elif self.metric_type == 'precision':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Recall
+        elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # F1 Score
+        elif self.metric_type in ('f1', 'f1 score'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+
+        # Confusion matrix
+        elif self.metric_type == 'confusion_matrix':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        
+        # Implemented by Nathmath Huang.
+        else:
+            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+    
+    def deriv_2(self, eps: float = 1e-15, floattype: type = float, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the sample-wise 2nd order derivative for a given model or data.
+        
+        Returns:
+            Tensor | Matrix: The computed metric value as a tensor
+        """
+        # Note, only "logloss" supports derivatives.
+        # Cross entropy/logloss
+        if self.metric_type in ('logloss', 'log-loss', 'entropy', 'cross-entropy'):
+            return self._deriv_2_logloss(eps=eps, floattype=floattype, **kwargs)
+        # Accuracy
+        elif self.metric_type == 'accuracy':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Precision
+        elif self.metric_type == 'precision':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # Recall
+        elif self.metric_type in ('recall', 'sensitivity', 'tpr'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        # F1 Score
+        elif self.metric_type in ('f1', 'f1 score'):
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+
+        # Confusion matrix
+        elif self.metric_type == 'confusion_matrix':
+            raise  ValueError(f"Metric type: {self.metric_type} cannot compute derivatives.")
+        
+        # Implemented by Nathmath Huang.
+        else:
+            raise ValueError(f"Unsupported metric type: {self.metric_type}")
+            
     def _to_labels(self, x: Tensor | Matrix, *, apply_softmax:bool = False) -> Tensor | Matrix:
         """
         Converts predictions or targets into label vectors.
@@ -858,12 +1576,12 @@ class MultiClassificationMetrics(ClassificationMetrics):
             x_reshaped = x.reshape([x.shape[0], 1])
         
             # Broadcast the comparison: each entry becomes True if equal to the class index.
-            onehot_data = x_reshaped.round() == range_vec
+            onehot_data = x_reshaped.astype(self.result.dtype).round() == range_vec
             # The above one produces a boolean array -> like True, False, True, ...
             #                                                False, True, False, ...
-            return onehot_data.to(backend=x._backend, device=x.device, dtype=int)
+            return onehot_data.to(backend=x._backend, device=x.device, dtype=float)
 
-    def _compute_accuracy(self, *, floattype: type = float):
+    def _compute_accuracy(self, *, floattype: type = float, **kwargs):
         """
         Computes accuracy = (# correct predictions) / (# total samples).
                              
@@ -879,7 +1597,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         total = true_labels.shape[0]
         return correct.sum().to(correct._backend, dtype=floattype, device=correct.device) / total
     
-    def _compute_confusion_matrix(self, *, inttype: type = int):
+    def _compute_confusion_matrix(self, **kwargs):
         """
         Computes the multi-class confusion matrix of shape [n_classes, n_classes],
         where rows correspond to true labels and columns to predicted labels.
@@ -895,14 +1613,14 @@ class MultiClassificationMetrics(ClassificationMetrics):
         true_labels = self._to_labels(self.target)
         
         # Convert them into one-hot matrices of shape [n_samples, n_classes]
-        pred_onehot = self._to_onehot(pred_labels).astype(inttype)
-        true_onehot = self._to_onehot(true_labels).astype(inttype)
+        pred_onehot = self._to_onehot(pred_labels)
+        true_onehot = self._to_onehot(true_labels)
         
         # Compute the confusion matrix as: (true_onehot)^T dot (pred_onehot)
         conf_matrix = true_onehot.transpose().dot(pred_onehot)
         return conf_matrix
 
-    def _compute_logloss(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_logloss(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes the cross-entropy loss (logloss) for multi-class classification.
         
@@ -927,10 +1645,61 @@ class MultiClassificationMetrics(ClassificationMetrics):
         true_onehot = self._to_onehot(self._to_labels(self.target))
         losses = -(true_onehot * preds.log()).sum(axis=1)
         return losses.mean()
+    
+    def _deriv_1_logloss(self, *, eps: float = 1e-15, floattype: type = float, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the first-order derivative of the cross-entropy loss (logloss) for multi-class classification.
+        
+        Assumes that `result` is a probability matrix of shape [n_samples, n_classes].
+        
+        Args:
+            eps: float, clip value to ensure predictions are not going to be log(0)
+            floattype: type, the internal precision of calculation
+    
+        Returns:
+            Matrix | Tensor: Derivative of the logloss with respect to the predictions.
+        """
+        if len(self.result.shape) != 2:
+            raise ValueError("Logloss metric requires probability predictions with shape [n_samples, n_classes].")
+        
+        # Ensure predictions are floating point and clip values to avoid log(0)
+        preds = self.result.to(self.result._backend, dtype=floattype, device=self.result.device).clip(eps, 1 - eps)
+
+        # Convert to one-hot labels
+        true_onehot = self._to_onehot(self._to_labels(self.target))
+
+        # ∂L/∂p = -y/p 
+        grad = -(true_onehot / preds) / preds.shape[0]
+        return grad
+    
+    def _deriv_2_logloss(self, *, eps: float = 1e-15, floattype: type = float, **kwargs) -> Tensor | Matrix:
+        """
+        Computes the second-order derivative of the cross-entropy loss (logloss) for multi-class classification.
+        
+        Assumes that `result` is a probability matrix of shape [n_samples, n_classes].
+        
+        Args:
+            eps: float, clip value to ensure predictions are not going to be log(0)
+            floattype: type, the internal precision of calculation
+    
+        Returns:
+            Matrix | Tensor: Second-order derivative (Hessian diagonal) of the logloss with respect to the predictions.
+        """
+        if len(self.result.shape) != 2:
+            raise ValueError("Logloss metric requires probability predictions with shape [n_samples, n_classes].")
+        
+        # Ensure predictions are floating point and clip values to avoid log(0)
+        preds = self.result.to(self.result._backend, dtype=floattype, device=self.result.device).clip(eps, 1 - eps)
+
+        # Convert to one-hot labels
+        true_onehot = self._to_onehot(self._to_labels(self.target))
+        
+        hess = (true_onehot / preds ** 2) / preds.shape[0]
+        return hess
 
     # OVR (One-Vs-Remaining) implementations for precision, recall and f1
 
-    def _compute_precision_ovr(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_precision_ovr(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average precision using a one-vs-rest approach.
         
@@ -947,8 +1716,8 @@ class MultiClassificationMetrics(ClassificationMetrics):
         """
         pred_labels = self._to_labels(self.result)
         true_labels = self._to_labels(self.target)
-        pred_onehot = self._to_onehot(pred_labels)
-        true_onehot = self._to_onehot(true_labels)
+        pred_onehot = self._to_onehot(pred_labels.astype(self.result.dtype))
+        true_onehot = self._to_onehot(true_labels.astype(self.target.dtype))
         
         # True positives: elementwise multiplication then sum over samples (axis=0)
         TP = (true_onehot * pred_onehot).sum(axis=0)
@@ -958,7 +1727,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         precision_per_class = TP / (TP + FP + floattype(eps))
         return precision_per_class.mean()
 
-    def _compute_recall_ovr(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_recall_ovr(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average recall (sensitivity) using a one-vs-rest approach.
         
@@ -975,8 +1744,8 @@ class MultiClassificationMetrics(ClassificationMetrics):
         """
         pred_labels = self._to_labels(self.result)
         true_labels = self._to_labels(self.target)
-        pred_onehot = self._to_onehot(pred_labels)
-        true_onehot = self._to_onehot(true_labels)
+        pred_onehot = self._to_onehot(pred_labels.astype(self.result.dtype))
+        true_onehot = self._to_onehot(true_labels.astype(self.target.dtype))
         
         # True positives: elementwise multiplication then sum over samples (axis=0)
         TP = (true_onehot * pred_onehot).sum(axis=0)
@@ -986,7 +1755,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         recall_per_class = TP / (TP + FN + floattype(eps))
         return recall_per_class.mean()
 
-    def _compute_f1_ovr(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_f1_ovr(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average F1-score in one-vs-rest mode.
         F1 per class is computed as:
@@ -1003,8 +1772,8 @@ class MultiClassificationMetrics(ClassificationMetrics):
         # Compute per-class precision and recall in OVR mode.
         pred_labels = self._to_labels(self.result)
         true_labels = self._to_labels(self.target)
-        pred_onehot = self._to_onehot(pred_labels)
-        true_onehot = self._to_onehot(true_labels)
+        pred_onehot = self._to_onehot(pred_labels.astype(self.result.dtype))
+        true_onehot = self._to_onehot(true_labels.astype(self.target.dtype))
         
         TP = (true_onehot * pred_onehot).sum(axis=0)
         FP = ((self.typeclass.ones_like(true_onehot, backend=true_onehot._backend) - true_onehot) * pred_onehot).sum(axis=0)
@@ -1025,7 +1794,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
     #   Similarly for class j.
     # The final OVO metric is computed as the average over all the binary evaluations.
     
-    def _compute_precision_ovo(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_precision_ovo(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average precision using a ovo approach.
         
@@ -1071,7 +1840,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         all_precisions = p_i_vals.append(p_j_vals, axis=0)
         return all_precisions.mean()
 
-    def _compute_recall_ovo(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_recall_ovo(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average recall using a ovo approach.
         
@@ -1110,7 +1879,7 @@ class MultiClassificationMetrics(ClassificationMetrics):
         all_recalls = r_i_vals.append(r_j_vals, axis=0)
         return all_recalls.mean()
 
-    def _compute_f1_ovo(self, *, eps: float = 1e-15, floattype: type = float):
+    def _compute_f1_ovo(self, *, eps: float = 1e-15, floattype: type = float, **kwargs):
         """
         Computes macro-average f1-score using a ovo approach.
         
@@ -1139,25 +1908,68 @@ class MultiClassificationMetrics(ClassificationMetrics):
 # to do optimizations, you may require and check whether it belongs to a child class
 # of the base class or not.
 
-# @todo
-# > In order to support Neural Network and back propagation,
-# > Derivatives are required to compute.
-# > In future version before I implement Neural Network Modules, I 
-# > will implement those stuff.
-
 # Test suites
 def regression_metrics_test():
     
     import numpy as np
     
     # Create example tensors
-    result = Matrix(np.array([1.0, 2.0, 3.0, 7.0, 9.0]), backend="torch")
-    target = Matrix(np.array([2.0, 4.0, 6.0, 8.0, 10.0]), backend="torch")
+    result = Matrix(np.array([1.5, 2.77, 5.98, 7.0, 9.0, 110.0, 114.0]), backend="torch")
+    target = Matrix(np.array([2.0, 4.0, 6.0, 8.0, 11.0, 114.0, 114.514]), backend="torch")
+    weights= Matrix([0.1,0.1,0.1,0.1,0.1,0.1,0.3], backend="torch")
+    
+    # A new set of results
+    result = Matrix(np.array([[252, 237.0, 17.2, 84.4],
+                              [127, 123.6, 13.28, 1.1],
+                              [251, 224.5, 96.26, 2.9]]), backend="torch")
+    target = Matrix(np.array([[247, 236.9, 17.2, 95.0],
+                              [128, 124.1, 14.4, 1.22],
+                              [256, 192.9, 98.09,3.11]]), backend="torch")
+    weights= Matrix([[0.1],[0.3],[0.6]], backend="torch")
+    
     
     # Compute metrics
-    metrics = RegressionMetrics(result, target, metric_type='mse')
-    MSE = metrics.compute()
-    print("mse:", MSE)
+    mtype = 'mse'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute())
+    print(mtype + " Grads  : ", metrics.deriv_1())
+    print(mtype + " Hessian: ", metrics.deriv_2())
+    
+    mtype = 'wmse'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute(weights=weights))
+    print(mtype + " Grads  : ", metrics.deriv_1(weights=weights))
+    print(mtype + " Hessian: ", metrics.deriv_2(weights=weights))
+    
+    mtype = 'rmse'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute())
+    print(mtype + " Grads  : ", metrics.deriv_1())
+    print(mtype + " Hessian: ", metrics.deriv_2())
+    
+    mtype = 'wrmse'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute(weights=weights))
+    print(mtype + " Grads  : ", metrics.deriv_1(weights=weights))
+    print(mtype + " Hessian: ", metrics.deriv_2(weights=weights))
+    
+    mtype = 'mae'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute())
+    print(mtype + " Grads  : ", metrics.deriv_1())
+    print(mtype + " Hessian: ", metrics.deriv_2())
+    
+    mtype = 'mape'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute())
+    print(mtype + " Grads  : ", metrics.deriv_1())
+    print(mtype + " Hessian: ", metrics.deriv_2())
+    
+    mtype = 'huber_loss'
+    metrics = RegressionMetrics(result, target, metric_type=mtype)
+    print(mtype + " Metric : ", metrics.compute())
+    print(mtype + " Grads  : ", metrics.deriv_1())
+    print(mtype + " Hessian: ", metrics.deriv_2())
     
 
 def binary_classification_test():
@@ -1170,7 +1982,6 @@ def binary_classification_test():
     # Accuracy test (using threshold 0.5).
     cm_accuracy = BinaryClassificationMetrics(scores, targets, 'accuracy', threshold=0.5)
     print("Accuracy:", cm_accuracy.compute())
-    cm_accuracy._compute_confusion_counts()
 
     # Precision test.
     cm_precision = BinaryClassificationMetrics(scores, targets, 'precision', threshold=0.5)
@@ -1280,6 +2091,8 @@ def multi_classification_test():
     # -------------------------
     cm_logloss = MultiClassificationMetrics(scores, targets, metric_type='logloss')
     print("Logloss:", cm_logloss.compute())
+    print("Logloss Gradiant:", cm_logloss.deriv_1())
+    print("Logloss Hessian :", cm_logloss.deriv_2())
     
     # -------------------------
     # Confusion Matrix Test

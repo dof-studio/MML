@@ -12,7 +12,7 @@ except ImportError:
 import lzma
 from dump import save, load
     
-from typing import List
+from typing import List, Tuple
     
 from matrix import Matrix
 from tensor import Tensor
@@ -49,11 +49,17 @@ class MLBase:
             random_state = getattr(self, attr)
         
         # If existing random_state_count, retrieve the count, else create it
-        if getattr(self, attr + "_count") is None:
+        try:
+            if getattr(self, attr + "_count") is None:
+                setattr(self, attr + "_count", 0)
+        except AttributeError as e:
             setattr(self, attr + "_count", 0)
         
         # If existing random_state_offset, retrieve the offset, else create it
-        if getattr(self, attr + "_offset") is None:
+        try:
+            if getattr(self, attr + "_offset") is None:
+                setattr(self, attr + "_offset", 57119)
+        except AttributeError as e:
             setattr(self, attr + "_offset", 57119)
         random_state_offset = getattr(self, attr + "_offset")
         
@@ -221,6 +227,41 @@ class MLBase:
         return folds
 
     @staticmethod
+    def make_rolling_window(X: Matrix | Tensor, y: Matrix | Tensor, window_size=10) -> Tuple[Matrix | Tensor]:
+        """
+        Make the data into rolling window 3D data and make the 1st dimension as saples.
+        
+        Args:
+            X (Matrix | Tensor): The feature matrix.
+            y (Matrix | Tensor): The target vector.
+            window_size (int): The number of historical window size (axis = 0)
+
+        Returns:
+            Tuple: A tuple where each element is for processed `X` and `y`.
+                  Tuple[X, y], where y is using the LAST row of target in the sliced piece.
+        
+        Raises:
+            TypeError: If 'X' and 'y' are not of the same type, either Matrix or Tensor.
+        
+        """   
+        if X.__attr__ != y.__attr__:
+            raise TypeError("Input 'X' and 'y' should have the same type Matrix or Tensor!")
+            
+        T, D = X.shape
+        if window_size > T:
+            raise ValueError("Window size cannot exceed number of 1st dimensions")
+        
+        # build each window by slicing and then stack into a 3D tensor
+        X_list = [X[i : i + window_size] for i in range(T - window_size + 1)]
+        # shape: (T - window_size + 1, window_size, D)
+        X_new = X_list[0].stack(*X_list[1:], axis = 0)
+        
+        # Create renewed y
+        y_new = y[(window_size-1):]
+        
+        return X_new, y_new
+                
+    @staticmethod
     def save(instance, filepath:str):
         """
         Save the model object into a file to your disk.
@@ -382,7 +423,7 @@ class Classification(MLBase):
             return x
 
     @staticmethod
-    def _to_onehot(x: Tensor | Matrix, n_classes: int, *, binarize = False) -> Tensor | Matrix:
+    def _to_onehot(x: Tensor | Matrix, n_classes: int, *, binarize = False, floattype: type = float) -> Tensor | Matrix:
         """
         Converts a label vector into a one-hot encoded matrix of shape [n_samples, n_classes].
         If x is already a matrix with the correct number of columns, it is returned unaltered.
@@ -412,10 +453,10 @@ class Classification(MLBase):
             x_reshaped = x.reshape([x.shape[0], 1])
             
             # Broadcast the comparison: each entry becomes True if equal to the class index.
-            onehot_data = x_reshaped.round() == range_vec
+            onehot_data = x_reshaped.astype(floattype).round() == range_vec
             # The above one produces a boolean array -> like True, False, True, ...
             #                                                False, True, False, ...
-            return onehot_data.to(backend=x._backend, device=x.device, dtype=int)
+            return onehot_data.to(backend=x._backend, device=x.device, dtype=floattype)
 
     def __repr__(self):
         return "Classification(Regression Abstract Base Class)."

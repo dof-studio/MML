@@ -24,6 +24,7 @@ from baseml import MLBase, Regression, Classification
 
 import lzma
 import random
+from collections import Counter
 import matplotlib.pyplot as plt
 
 
@@ -132,7 +133,7 @@ class BaseTree(Regression, Classification):
                 self.feature_index_map[i] = feature_names[i]
         else:
             # Map it from 0 using the default regime
-            self.feature_index_map
+            self.feature_index_map = {}
             for i in range(n_features):
                 self.feature_index_map[i] = regime.format(i)
         return self
@@ -171,7 +172,7 @@ class BaseTree(Regression, Classification):
                 val = imp
             if isinstance(val, list):
                 val = val[0] if len(val) == 1 else val
-            feat_imp_list.append((feature_name, round(val, 4)))
+            feat_imp_list.append((feature_name, val))
         
         # Sort the features by importance descending (largest first).
         feat_imp_list.sort(key=lambda x: x[1], reverse=True)
@@ -192,7 +193,7 @@ class BaseTree(Regression, Classification):
         
         # Add text labels on top of the bars.
         for idx, v in enumerate(importances):
-            ax.text(idx, v, str(v), ha='center', va='bottom')
+            ax.text(idx, v, str(round(v, 4)), ha='center', va='bottom')
         plt.show()
     
     def __repr__(self):
@@ -224,7 +225,7 @@ class CART(BaseTree):
             task: str, 'regression' or 'classification'.
             tree_id: int, the identifiation number for this tree. If None, then 0.
             loss: str, the name of the loss function applied.
-                  For regression, choose 'mse' or 'rmse', or any RegressionMetrics;
+                  For regression, choose 'mse', 'rmse', 'wmse', 'wrmse', or any RegressionMetrics;
                   For classification, 'gini' or 'logloss' may be used.
                   If not provided, defaults to 'mse' for regression and 'logloss' for classification.
             max_depth: int, Maximum depth of the tree.
@@ -276,6 +277,7 @@ class CART(BaseTree):
         # Original Dataset (assigned in fit())
         self.original_X = None
         self.original_y = None
+        self.original_weights = None
         self.floattype = floattype
         
         # KWargs Accepted
@@ -285,6 +287,11 @@ class CART(BaseTree):
         self.root = None # Tree object
         self.unpruned_root = None
                          # It is the core thing to see whether the tree is trained or not
+                         
+        # Record the total number of leaves
+        self.total_num_leaves = 0
+                         # Note, the number of leaves are made sure to be unique but NOT consecutive
+                         # This DOES NOT show the number of leaves but also stands for a number counter for leaves
 
         # Record the type (Matrix or Tensor) of the input data for later reconstruction.
         self.typeclass = None
@@ -292,7 +299,11 @@ class CART(BaseTree):
         # Record if it is one hot
         self.one_hot = None
         
-    def fit(self, X: Matrix | Tensor, y: Matrix | Tensor, one_hot: bool = True, use_features_idx: tuple | list | Matrix | Tensor | None = None, **kwargs):
+    def fit(self, X: Matrix | Tensor, y: Matrix | Tensor, 
+            one_hot: bool = True, 
+            use_features_idx: tuple | list | Matrix | Tensor | None = None, 
+            weights: Matrix | Tensor | None = None,
+            **kwargs):
         """
         Fit the CART tree to the data.
         
@@ -300,7 +311,8 @@ class CART(BaseTree):
             X: Matrix | Tensor, the feature matrix (each row is a sample).
             y: Matrix | Tensor, the target values (for regression, numerical; for classification, one-hot or multi-label).
             one_hot: bool, whether target y is one hot encoded
-            use_features_idx, Matrix| Tensor | tuple | list of indices or None (all features)
+            use_features_idx, Matrix | Tensor | tuple | list of indices or None (all features)
+            weights: Matrix | Tensor | None, if non-None, it will pass to Metrics/Loss and should be used with Metrics like "wmse" or "wrmse".
         
         Returns:
             self
@@ -320,6 +332,14 @@ class CART(BaseTree):
         # Copy Training data
         self.original_X = X.to(backend=X._backend, dtype = self.floattype, device=X.device)
         self.original_y = y.to(backend=y._backend, dtype = self.floattype, device=y.device)
+        self.original_weights = weights if weights is None else weights.to(backend=weights._backend, dtype = self.floattype, device=weights.device)
+        
+        # Check the shape of weights if existance
+        if self.original_weights is not None:
+            if isinstance(self.original_weights, Object) == False:
+                raise ValueError("Input weights must be either Matrix and Tensor. Use Matrix(data) or Tensor(data) to convert.")
+            if type(self.original_weights) != type(y):
+                raise ValueError("Input `weights` and target `y` must have the same type, either Matrix or Tensor.")
         
         # Record the one_hot case
         self.one_hot = one_hot
@@ -334,7 +354,7 @@ class CART(BaseTree):
         self.total_samples = X.shape[0]
         
         # If feature names were provided, create a map for feature names
-        self._create_feature_index_map(self.total_samples)
+        self._create_feature_index_map(X.shape[1])
         
         # Set features used (will be converted to a list).
         self.use_features_idx = use_features_idx
@@ -354,13 +374,16 @@ class CART(BaseTree):
         # CART Special Fitting logic
                 
         # Build the tree recursively starting from the root.
-        self.unpruned_root = self._build_tree(self.original_X, self.original_y, depth = 0)
+        self.unpruned_root = self._build_tree(self.original_X, self.original_y, self.original_weights, depth = 0)
         # Note, this _build_tree uses _find_best_split, which is desperately slow.
         # It may subject to future optimization using batched Tensor algebra.
         # By Nathmath Huang
+        
+        # If needs prune, then prune the tree and transfer the node
         if self.prune == True:
             self.root = deepcopy(self.unpruned_root)
             self.root, _, _, _ = self._prune_tree(self.root, alpha = self.prune_alpha)
+            # For simplicity, we only provide alpha and let program to determine X,y,weights
         else:
             self.root = deepcopy(self.unpruned_root)
             
@@ -369,7 +392,7 @@ class CART(BaseTree):
             
         return self
     
-    def _create_feature_importance(self, node = None, *, recursive: bool = False, use_prune: bool = True):
+    def _create_feature_importance(self, node = None, *, recursive: bool = False, use_prune: bool = True, **kwargs):
         """
         Creates a feature importance dict.
         
@@ -403,19 +426,24 @@ class CART(BaseTree):
         
         return
     
-    def _build_tree(self, X: Matrix | Tensor, y: Matrix | Tensor, depth: int):
+    def _build_tree(self, X: Matrix | Tensor, y: Matrix | Tensor, weights: Matrix | Tensor| None = None, *, depth: int, **kwargs):
         """
         Recursively build the tree structure.
         
         Args:
             X: Matrix | Tensor, the splited data of features at this time.
             y: Matrix | Tensor, the splited target at this time.
+            weights: Matrix | Tensor | None, if non-None, it will pass to Metrics/Loss and should be used with Metrics like "wmse" or "wrmse",
+                                                          and will be used in calculating the weighted leaf.
         
         Returns:
             dict, A dictionary representing the node. Internal nodes have keys:
                 'feature_index' and 'threshold' and pointers 'left' and 'right'.
             Leaf nodes have a key 'prediction' storing the constant prediction.
         """
+        # It is in the internal loop, we don't do type check here
+        # 
+        
         n_samples = X.shape[0]
 
         # Recursion Stops #####################################################
@@ -426,26 +454,27 @@ class CART(BaseTree):
         # (3) node is pure (no need to do further classification or regression)
         #  etc...
         if depth >= self.max_depth:
-            return self._create_leaf(y)
+            return self._create_leaf(y, weights = weights)
             # Stopping critera 1)
         
-        if n_samples < (self.min_samples_split if self.min_samples_split >= 1 else self.total_samples * self.min_samples_split):
-            return self._create_leaf(y)
+        if n_samples < (self.min_samples_split if self.min_samples_split >= 1 else self.total_samples * self.min_samples_split) or n_samples == 1:
+            return self._create_leaf(y, weights = weights)
             # Stopping critera 2)
         
         if self._is_pure(y):
-            return self._create_leaf(y)
+            return self._create_leaf(y, weights = weights)
             # Stopping critera 3)
         
         # Find the best split given the data at this node.
         if self.grid_accelerator is None:
-            best_split = self._find_best_split(X, y)
+            best_split = self._find_best_split(X, y, weights = weights)
         else:
-            best_split = self._find_best_split_gridsearch(X, y, grid_k=self.grid_accelerator, percentile=self.grid_percentile)
+            best_split = self._find_best_split_gridsearch(X, y, weights = weights, 
+                                               grid_k=self.grid_accelerator, percentile=self.grid_percentile)
         
         # If NO improvement or subset count == 0, still stop here.
         if best_split["improvement"].data <= 0 or best_split["left_count"] == 0 or best_split["right_count"] == 0:
-            return self._create_leaf(y)
+            return self._create_leaf(y, weights = weights)
             # Stopping critera 4)
         
         # Partition the data into left and right children using the best split.
@@ -458,12 +487,20 @@ class CART(BaseTree):
         X_right = X[right_mask.to_numpy_array()]
         y_right = y[right_mask.to_numpy_array()]
         
+        # Use the masks to obtain subsets of the weights if having.
+        if weights is not None:
+            left_weights = weights[left_mask.to_numpy_array()]
+            right_weights = weights[right_mask.to_numpy_array()]
+        else:
+            left_weights = None
+            right_weights = None
+            
         #######################################################################
         # Recursive!
         #
         # Recursively build the left and right subtrees.
-        left_node = self._build_tree(X_left, y_left, depth + 1)
-        right_node = self._build_tree(X_right, y_right, depth + 1)
+        left_node = self._build_tree(X_left, y_left, weights = left_weights, depth = depth + 1)
+        right_node = self._build_tree(X_right, y_right, weights = right_weights, depth = depth + 1)
         
         # Return the internal node as a dictionary.
         return {
@@ -475,7 +512,7 @@ class CART(BaseTree):
             "right": right_node
         }
     
-    def _create_leaf(self, y: Matrix | Tensor, *, keepdims: bool = False):
+    def _create_leaf(self, y: Matrix | Tensor, *, weights: Matrix | Tensor | None = None, keepdims: bool = False, **kwargs):
         """
         Create a leaf node by computing the optimal constant prediction for the node.
         For regression, this is typically the mean; 
@@ -485,18 +522,26 @@ class CART(BaseTree):
             dcit, dict of prediction
         """
         # For regression, we compute the arithmetic mean of y.
-        # For classification, we compute the average of the one-hot outputs.
+        # For classification, we compute the arithmetic mean (same) of the one-hot outputs.
         # We STRONGLY recommend users to convert to one-hot data.
-        if self.task == "regression":
+        
+        # If having weights, we compute weighted average with weights normalization
+        if weights is None:
             prediction = y.mean(axis=0)
         else:
-            if self.one_hot == True:
-                prediction = y.mean(axis=0)
-            else:
-                prediction = y.mean(axis=0)
-        return {"prediction": prediction if keepdims == False else prediction.reshape([1, -1]).repeat(y.shape[0], axis=0)}    
+            norm_weights = weights / weights.sum(axis=0)
+            prediction = (y * norm_weights).sum(axis=0)
+            
+        # Increase the total number of leaves (just a counter)
+        leaf_no = int(self.total_num_leaves)
+        self.total_num_leaves += 1
+        
+        return {
+                 "prediction": prediction if keepdims == False else prediction.reshape([1, -1]).repeat(y.shape[0], axis=0),
+                 "leaf_no": leaf_no
+               }    
     
-    def _is_pure(self, y: Matrix | Tensor, *, std_thres: float = 1e-10):
+    def _is_pure(self, y: Matrix | Tensor, *, std_thres: float = 1e-10, **kwargs):
         """
         Check whether the given target values are pure.
         For regression, this may check that the std devation is nearly zero (< std_thres).
@@ -508,7 +553,7 @@ class CART(BaseTree):
         if self.task == "regression":
             # Compute the std dev.
             stdev = y.std(axis=0)
-            counts = self.typeclass(stdev.data <= 1e-8)
+            counts = self.typeclass(stdev.data <= 1e-8, backend=y._backend, device=y.device)
             if isinstance(counts, Object):
                 return counts.all() == True
             else:
@@ -528,10 +573,14 @@ class CART(BaseTree):
             else:
                 return counts == True
 
-    def _find_best_split(self, X: Matrix | Tensor, y: Matrix | Tensor):
+    def _find_best_split(self, X: Matrix | Tensor, y: Matrix | Tensor, weights: Matrix | Tensor | None = None, **kwargs):
         """
         Iterate over all features and candidate threshold values to identify the best split.
         This is the UN-optimized version using a O(n^2) nested loop.
+        
+        Special Args:
+            weights: Matrix | Tensor | None, if non-None, it will pass to Metrics/Loss and should be used with Metrics like "wmse" or "wrmse",
+                                                          and will be used in calculating the weighted leaf.
         
         Returns:
             A dict like:
@@ -562,8 +611,8 @@ class CART(BaseTree):
         }
         
         # Compute parent prediction and its loss before splitting.
-        parent_pred = self._create_leaf(y, keepdims=True)["prediction"]
-        parent_loss = self._compute_loss(parent_pred, y)
+        parent_pred = self._create_leaf(y, weights = weights, keepdims=True)["prediction"]
+        parent_loss = self._compute_loss(parent_pred, y, weights = weights, **kwargs)
         
         n_features = X.shape[1]
         
@@ -579,6 +628,10 @@ class CART(BaseTree):
                 otherwise, returns an empty dict.
 
             """
+            # If threshold is on the egde of range, return empty.
+            X_col = X[:,feature_i]
+            if threshold >= X_col.max().data or threshold <= X_col.min().data:
+                return {}
             
             # Obtain boolean masks for the split.
             mask_left = self._get_mask(X, feature_i, threshold, left=True)
@@ -593,14 +646,22 @@ class CART(BaseTree):
             # Extract left and right splits.
             y_left = y[mask_left.to_list()]
             y_right = y[mask_right.to_list()]
+            
+            # Use the masks to obtain subsets of the weights if having.
+            if weights is not None:
+                left_weights = weights[mask_left.to_numpy_array()]
+                right_weights = weights[mask_right.to_numpy_array()]
+            else:
+                left_weights = None
+                right_weights = None
                 
             # Compute predictions for left and right groups.
-            left_pred = self._create_leaf(y_left, keepdims=True)["prediction"]
-            right_pred = self._create_leaf(y_right, keepdims=True)["prediction"]
+            left_pred = self._create_leaf(y_left, weights=left_weights, keepdims=True)["prediction"]
+            right_pred = self._create_leaf(y_right, weights=right_weights, keepdims=True)["prediction"]
                 
             # Compute losses using the external loss functions.
-            left_loss = self._compute_loss(left_pred, y_left)
-            right_loss = self._compute_loss(right_pred, y_right)
+            left_loss = self._compute_loss(left_pred, y_left, weights = left_weights)
+            right_loss = self._compute_loss(right_pred, y_right, weights = right_weights)
                 
             # Compute weighted loss.
             weighted_loss_ = (left_count / n_samples) * left_loss + (right_count / n_samples) * right_loss
@@ -612,7 +673,7 @@ class CART(BaseTree):
             if improvement_.data > best_improvement.data:
                 
                 return {
-                    "feature_index": i,
+                    "feature_index": feature_i,
                     "threshold": threshold,
                     "improvement": improvement_,
                     "weighted_loss": weighted_loss_,
@@ -651,15 +712,23 @@ class CART(BaseTree):
                 
         return best_split
     
-    def _find_best_split_gridsearch(self, X: Matrix | Tensor, y: Matrix | Tensor, 
-                                    *, grid_k: int = 10, random_state:int | None = None,
-                                    variant: float | None = None, percentile: bool = False):
+    def _find_best_split_gridsearch(self, X: Matrix | Tensor, y: Matrix | Tensor, weights: Matrix | Tensor | None = None, 
+                                    *, 
+                                    grid_k: int = 10, 
+                                    random_state:int | None = None,
+                                    variant: float | None = None, 
+                                    percentile: bool = False,
+                                    **kwargs):
         """
         Iterate over all features and candidate threshold values to identify the best split.
         Uses a combination of grid search (with progressive interval refinement)
         to efficiently explore the candidate threshold space.
         
-        Args:
+        Special Args:
+            weights: Matrix | Tensor | None, if non-None, it will pass to Metrics/Loss and should be used with Metrics like "wmse" or "wrmse",
+                                                          and will be used in calculating the weighted leaf.
+        
+        Control Args:
             grid_k: int, the number of grid points within a specific range, default is 50, recommend 20, 50, 100, 200.
             random_state: int, the random seed controlling the sequence of inspecting features and grid variants, if None, then randomly draw.
             variant: float, the size (in decimal) of random noise to add on the splited grid points, if None, then add nothing.
@@ -679,7 +748,8 @@ class CART(BaseTree):
         # Set the global seed if passed
         if random_state is not None:
             random.seed(random_state)
-            random_state += 2597 # Offset to make it be reusable
+            np.random.seed(random_state)
+            random_state += self.total_num_leaves
         
         # Create placeholders.
         n_samples = X.shape[0]
@@ -693,8 +763,8 @@ class CART(BaseTree):
         }
         
         # Compute parent prediction and its loss before splitting.
-        parent_pred = self._create_leaf(y, keepdims=True)["prediction"]
-        parent_loss = self._compute_loss(parent_pred, y)
+        parent_pred = self._create_leaf(y, weights = weights, keepdims=True)["prediction"]
+        parent_loss = self._compute_loss(parent_pred, y, weights = weights, **kwargs)
         
         n_features = X.shape[1]
         
@@ -704,40 +774,51 @@ class CART(BaseTree):
         
         #######################################################################
         # Test on a feature and a threshold
-        def _test_feature_threshold(feature_i: int, threshold: float,
-                                    parent_loss_: float, best_improvement: Matrix | Tensor) -> dict:
+        def _test_feature_threshold(feature_i: int, threshold: float, parent_loss_: float, best_improvement: Matrix | Tensor) -> dict:
             """
             Test a split and see if it is a better split against a given benchmark.
-
+            
             Returns
             -------
             dict
                 if this is a better threshold and feature, return the information creating a split;
                 otherwise, returns an empty dict.
-            
+
             """
+            # If threshold is on the egde of range, return empty.
+            X_col = X[:,feature_i]
+            if threshold >= X_col.max().data or threshold <= X_col.min().data:
+                return {}
             
-            # Obtain boolean masks.
+            # Obtain boolean masks for the split.
             mask_left = self._get_mask(X, feature_i, threshold, left=True)
             mask_right = self._get_mask(X, feature_i, threshold, left=False)
                 
-            # Get counts; if either side is empty, skip.
+            # Get the counts; if either side is empty, continue.
             left_count = mask_left.sum()
             right_count = mask_right.sum()
             if left_count == 0 or right_count == 0:
                 return {}
                 
-            # Extract splits.
-            y_left = y[mask_left.to_numpy_array()]
-            y_right = y[mask_right.to_numpy_array()]
+            # Extract left and right splits.
+            y_left = y[mask_left.to_list()]
+            y_right = y[mask_right.to_list()]
+            
+            # Use the masks to obtain subsets of the weights if having.
+            if weights is not None:
+                left_weights = weights[mask_left.to_numpy_array()]
+                right_weights = weights[mask_right.to_numpy_array()]
+            else:
+                left_weights = None
+                right_weights = None
                 
-            # Compute predictions.
-            left_pred = self._create_leaf(y_left, keepdims=True)["prediction"]
-            right_pred = self._create_leaf(y_right, keepdims=True)["prediction"]
+            # Compute predictions for left and right groups.
+            left_pred = self._create_leaf(y_left, weights = left_weights, keepdims = True)["prediction"]
+            right_pred = self._create_leaf(y_right, weights = right_weights, keepdims = True)["prediction"]
                 
-            # Compute losses.
-            left_loss = self._compute_loss(left_pred, y_left)
-            right_loss = self._compute_loss(right_pred, y_right)
+            # Compute losses using the external loss functions.
+            left_loss = self._compute_loss(left_pred, y_left, weights = left_weights)
+            right_loss = self._compute_loss(right_pred, y_right, weights = right_weights)
                 
             # Compute weighted loss.
             weighted_loss_ = (left_count / n_samples) * left_loss + (right_count / n_samples) * right_loss
@@ -745,8 +826,9 @@ class CART(BaseTree):
             # Compute improvement (loss reduction).
             improvement_ = parent_loss_ - weighted_loss_
                 
-            # If this candidate beats the current best, return its details.
+            # Check if the improvement is the best so far.
             if improvement_.data > best_improvement.data:
+                
                 return {
                     "feature_index": feature_i,
                     "threshold": threshold,
@@ -757,11 +839,11 @@ class CART(BaseTree):
                 }
             else:
                 return {}
-        
+
         #######################################################################
         # Grid search accelerator
         def _grid_search_threshold(feature_i: int, unique_values: list,
-                                   X: Matrix | Tensor, y: Matrix | Tensor, 
+                                   X: Matrix | Tensor, y: Matrix | Tensor, weights: Matrix | Tensor | None,
                                    parent_loss_: float, best_improvement: Matrix | Tensor,
                                    grid_k: int = 10, tol_points: int | None = None, 
                                    random_state: int | None = None, variant:float | None = None, percentile: bool = True) -> dict:
@@ -804,7 +886,7 @@ class CART(BaseTree):
                 return candidate                    
             
             # Percentile helper
-            def _percentile_within(data, percentiles: list, lower_threshold: float, upper_threshold: float):
+            def _percentile_within(data: np.ndarray, percentiles: list, lower_threshold: float, upper_threshold: float):
                 """
                 Computes specified percentile values for data within a given threshold range.
             
@@ -859,15 +941,12 @@ class CART(BaseTree):
                 
                 best_local = {}
                 
-                # Starting benchmark
-                best_local_improvement = best_improvement
-                
                 # Test each candidate in the grid.
                 for thres in grid_points:
-                    res = _test_feature_threshold(feature_i, thres, parent_loss_, best_local_improvement)
+                    res = _test_feature_threshold(feature_i, thres, parent_loss_, best_improvement)
                     if len(res) > 0:
                         best_local = res
-                        best_local_improvement = res["improvement"]
+                        best_improvement = res["improvement"]
                 
                 # If no candidate was found in this grid, exit.
                 if len(best_local) == 0:
@@ -895,15 +974,14 @@ class CART(BaseTree):
                 # If the interval is sufficiently resolved, perform exhaustive search on these.
                 if len(interval_points) < tol_points:
                     best_exhaustive = {}
-                    best_ex_improvement = best_local_improvement
                     for it, th in enumerate(interval_points):
                         if it == 0:
                             continue
                         thres = (interval_points[it-1] + interval_points[it]) / 2
-                        res = _test_feature_threshold(feature_i, thres, parent_loss_, best_ex_improvement)
+                        res = _test_feature_threshold(feature_i, thres, parent_loss_, best_improvement)
                         if len(res) > 0:
                             best_exhaustive = res
-                            best_ex_improvement = res["improvement"]
+                            best_improvement = res["improvement"]
                     candidate = best_exhaustive if len(best_exhaustive) > 0 else best_local
                     break
                 else:
@@ -927,7 +1005,9 @@ class CART(BaseTree):
                 continue
             
             # Run grid search on this feature.
-            candidate = _grid_search_threshold(feat, unique_values, X, y, parent_loss, best_split["improvement"], 
+            candidate = _grid_search_threshold(feat, unique_values, X, y, weights, 
+                                               parent_loss_=parent_loss.copy(), 
+                                               best_improvement=best_split["improvement"].copy(), 
                                                grid_k=grid_k, 
                                                random_state=random_state,
                                                variant=variant,
@@ -939,7 +1019,7 @@ class CART(BaseTree):
                 
         return best_split
     
-    def _get_mask(self, X: Matrix | Tensor, feature_index: int, threshold: float, *, left=True):
+    def _get_mask(self, X: Matrix | Tensor, feature_index: int, threshold: float, *, left=True, **kwargs):
         """
         Return a boolean mask for the rows of X based on the threshold at the given feature index.
         
@@ -955,17 +1035,21 @@ class CART(BaseTree):
         else:
             return self.typeclass(X[:, feature_index].data > threshold, backend=X._backend, dtype=bool, device=X.device)
     
-    def _compute_loss(self, prediction: Matrix | Tensor, y: Matrix | Tensor):
+    def _compute_loss(self, prediction: Matrix | Tensor, y: Matrix | Tensor, *, weights: Matrix | Tensor | None = None, **kwargs):
         """
         Compute the loss between the prediction (a constant for a node) and the true target y.
         Dispatch to the corresponding external function.
+        
+        Special Args:
+            weights: Matrix | Tensor | None, if non-None, it will pass to Metrics/Loss and should be used with Metrics like "wmse" or "wrmse",
+                                                          and will be used in calculating the weighted leaf.
         
         Returns:
             Matrix | Tensor, even if the metrics is a scalar.
         """        
         if self.task == "regression":
             metrics = RegressionMetrics(prediction, y, metric_type = self.loss)
-            return metrics.compute()
+            return metrics.compute(weights = weights, **kwargs)
         else:
             # If gini, then we use the built-in gini
             if self.loss == 'gini':
@@ -973,12 +1057,12 @@ class CART(BaseTree):
             else:
                 if self.n_classes > 2:
                     metrics = MultiClassificationMetrics(prediction, y, metric_type = self.loss)
-                    return metrics.compute(floattype = self.floattype)
+                    return metrics.compute(floattype = self.floattype, weights = weights, **kwargs)
                 else:
                     metrics = BinaryClassificationMetrics(prediction, y, metric_type = self.loss)
-                    return metrics.compute(floattype = self.floattype)
+                    return metrics.compute(floattype = self.floattype, weights = weights, **kwargs)
                     
-    def _prune_tree(self, node=None, X=None, y=None, *, alpha: float = 0.001):
+    def _prune_tree(self, node=None, X=None, y=None, weights=None, *, alpha: float = 0.001, **kwargs):
         """
         Recursively prune the tree using cost-complexity pruning.
         At each node, we compare:
@@ -997,6 +1081,7 @@ class CART(BaseTree):
                If None, uses self.original_X (the entire training set).
             y: Matrix | Tensor, The corresponding targets for the samples in X.
                If None, uses self.oroginal_y.
+            weights: Matrix | Tensor | None, The weights to sample or to each prediction, can be None.
             alpha: float, The complexity parameter to penalize the number of leaves.
         
         Returns:
@@ -1013,6 +1098,8 @@ class CART(BaseTree):
             X = self.original_X
         if y is None:
             y = self.original_y
+        if weights is None and self.original_weights is not None:
+            weights = self.original_weights
             
         # number of samples in current node
         n = X.shape[0]
@@ -1024,7 +1111,7 @@ class CART(BaseTree):
         if "prediction" in node:
             # For a leaf node, compute loss on the training samples that reached this leaf.
             leaf_pred = node["prediction"]
-            loss_leaf = self._compute_loss(leaf_pred.reshape([1,-1]).repeat(y.shape[0], axis=0), y)
+            loss_leaf = self._compute_loss(leaf_pred.reshape([1,-1]).repeat(y.shape[0], axis=0), y, weights = weights)
             return node, scaling_factor * n * loss_leaf + alpha * 1, n, 1
 
         # Otherwise, the node is internal.
@@ -1041,10 +1128,18 @@ class CART(BaseTree):
         y_left = y[left_mask.to_numpy_array()]
         X_right = X[right_mask.to_numpy_array()]
         y_right = y[right_mask.to_numpy_array()]
+        
+        # Use the masks to obtain subsets of the weights if having.
+        if weights is not None:
+            left_weights = weights[left_mask.to_numpy_array()]
+            right_weights = weights[right_mask.to_numpy_array()]
+        else:
+            left_weights = None
+            right_weights = None
 
         # Recursively prune the left and right subtrees.
-        pruned_left, cost_left, n_left, leaves_left = self._prune_tree(node["left"], X_left, y_left, alpha=alpha)
-        pruned_right, cost_right, n_right, leaves_right = self._prune_tree(node["right"], X_right, y_right, alpha=alpha)
+        pruned_left, cost_left, n_left, leaves_left = self._prune_tree(node["left"], X_left, y_left, left_weights, alpha=alpha)
+        pruned_right, cost_right, n_right, leaves_right = self._prune_tree(node["right"], X_right, y_right, right_weights, alpha=alpha)
 
         # Combine the cost for the subtree as currently structured.
         subtree_cost = cost_left + cost_right
@@ -1052,9 +1147,9 @@ class CART(BaseTree):
 
         # Now compute the cost if we were to prune (collapse) this internal node into a single leaf.
         # Use all samples that reach the current node (X, y) to compute the aggregated prediction.
-        pruned_leaf = self._create_leaf(y, keepdims = False)
+        pruned_leaf = self._create_leaf(y, weights = weights, keepdims = False)
         # returns a dict with key "prediction"
-        loss_pruned = self._compute_loss(pruned_leaf["prediction"].reshape([1,-1]).repeat(y.shape[0], axis=0), y)
+        loss_pruned = self._compute_loss(pruned_leaf["prediction"].reshape([1,-1]).repeat(y.shape[0], axis=0), y, weights = weights)
         pruned_cost = scaling_factor * n * loss_pruned + alpha * 1  # complexity: one leaf
 
         # Decide whether to prune this node.
@@ -1102,7 +1197,7 @@ class CART(BaseTree):
         
         return predictions
 
-    def _predict_recursive(self, X: Matrix | Tensor, node: dict, predictions: list, indices: Matrix | Tensor):
+    def _predict_recursive(self, X: Matrix | Tensor, node: dict, predictions: Matrix | Tensor, indices: Matrix | Tensor, **kwargs):
         """
         Recursively traverse the tree: at each node, assign predictions to the corresponding indices.
         
@@ -1142,7 +1237,109 @@ class CART(BaseTree):
         self._predict_recursive(X, node["left"], predictions, left_indices)
         self._predict_recursive(X, node["right"], predictions, right_indices)
     
-    def plot_tree(self, figsize = (14, 8)):
+    def apply(self, X: Matrix | Tensor, **kwargs) -> tuple:
+        """
+        Apply the tree searching and return the index of the node each sample is corresponding to.
+        > Deprecated: Legacy Apply method. But I haven't done the new one.
+        
+        Returns:
+            Tuple of [
+                Matrix | Tensor: the index of the node, unique to any given X, 1 dim, integers,
+                np.array: the string representation (always in NUMPY) of the node, unique to any X given this tree, strings,
+                ]
+        """
+        if not self.root:
+            raise TypeError("Please train the tree first.")
+        
+        # Type Check (must be an Object type).
+        if isinstance(X, Object) == False:
+            raise ValueError("Input dataset must be either Matrix and Tensor. Use Matrix(data) or Tensor(data) to convert.")
+        
+        # Dimension Check
+        if len(X.shape) != 2:
+            raise ValueError("Input feature `X` must be a tabular data with two dimensions.")
+        if X.shape[1] != self.original_X.shape[1]:
+            raise ValueError(f"Input feature `X` must have the same number of columns as the training data, which is {self.X.shape[1]}, but you have {X.shape[1]}")
+        
+        # Create a float typed X
+        X_float = X.to(backend=X._backend, dtype = self.floattype, device=X.device)
+        
+        # Create a container for node indices with 1 column but the same row number as X
+        node_indices = self.typeclass.zeros((1), backend = X._backend, dtype = int).reshape([1, 1]).repeat(X.shape[0], axis=0)
+        node_representation = node_indices.to_numpy_array().astype(str)
+        node_representation[...] = "" # Initialize them with empty strings
+        
+        # Apply recursively.
+        self._apply_recursive(X_float, self.root, node_representation, indices=self.typeclass(list(range(X.shape[0])), backend=X._backend))
+        
+        # Given the node_representation has been calculated, we calculate the indices as integers
+        list_node_representation = node_representation.flatten().tolist()
+        def _to_count_order_dict(lst):
+            """
+            Generate a dict where each key is a unique value from lst.
+            The value is a tuple: (count of occurrences, rank in sorted order, starting at 1).
+            """
+            counts = Counter(lst)
+            unique_sorted = sorted(counts)
+            return {value: (counts[value], index + 1)
+                    for index, value in enumerate(unique_sorted)}
+
+        # This dict stores the sorted values and encountered times
+        count_order_dict = _to_count_order_dict(list_node_representation)
+        list_indices = [count_order_dict[item][1] for item in list_node_representation]
+        
+        return self.typeclass(list_indices, backend = X._backend, dtype = int).reshape([-1, 1]), node_representation
+
+    def _apply_recursive(self, X: Matrix | Tensor, node: dict, node_representation: np.ndarray, indices: Matrix | Tensor, **kwargs):
+        """
+        Recursively traverse the tree: Assign the path (0 for left 1 for right N for node) to find the leaf node for each sample.
+        
+        Parameters:
+            X: Feature matrix for all samples.
+            node: The current node (dictionary). If a leaf, 'prediction' key exists.
+            node_representation: An empty np column array (n, 1) represent the string-ized node path, but lefr '' empty string when passed in.
+                  In this function, algorithms will add pathes to the `node_representation`.
+            indices: Indices (or a mask) of rows in X that fall into this node.
+            
+        Returns: 
+            None   
+        
+        """
+        # Helper Function: Append some character to a slice of representation
+        def _append_sliced(representation: np.ndarray, slices: Matrix | Tensor, column: int = 0, to_append: str = "0"):
+                representation[slices, column] = np.char.add(representation[slices.flatten().to_numpy_array(), column], to_append)
+                
+        # If the node is a leaf, assign the leaf's prediction to all indices.
+        if "prediction" in node:
+            if len(indices) > 0:
+                _append_sliced(node_representation, indices, column = 0, to_append = "N")
+            return
+        
+        # If no indices, return 
+        if len(indices) == 0:
+            return
+        
+        # Get the splitting criteria.
+        feature_index = node["feature_index"]
+        threshold = node["threshold"]
+        
+        X_subset = X[indices.to_list()]
+        left_mask = self._get_mask(X_subset, feature_index, threshold, left=True)
+        right_mask = self._get_mask(X_subset, feature_index, threshold, left=False)
+        
+        # Convert the boolean masks to index Matrix | Tensors
+        left_indices = indices[self.typeclass.where(left_mask.flatten().data == True, backend=X._backend).flatten().to_numpy_array()]
+        right_indices = indices[self.typeclass.where(right_mask.flatten().data == True, backend=X._backend).flatten().to_numpy_array()]
+        
+        # Create left and right path
+        _append_sliced(node_representation, left_indices, column = 0, to_append = "0")
+        _append_sliced(node_representation, right_indices, column = 0, to_append = "1")
+        
+        # Recurse on the left and right children.
+        self._apply_recursive(X, node["left"], node_representation, left_indices)
+        self._apply_recursive(X, node["right"], node_representation, right_indices)
+    
+    def plot_tree(self, figsize = (14, 8), **kwargs):
         """
         Plot an image representing the structure of the decision tree.
         
@@ -1242,7 +1439,7 @@ class CART(BaseTree):
         plt.show()
 
     def __repr__(self):
-        return f"CART(task = {self.task}, loss = {self.loss}, n_features = {self.n_classes})."
+        return f"CART(task = {self.task}, loss = {self.loss}, n_features = {self.original_X.shape[1]})."
 
 
 if __name__ == "__main__":
@@ -1256,7 +1453,7 @@ if __name__ == "__main__":
     ###########################################################################
     #
     # Generate the data
-    def generate_binary_classification_data(n_samples=10000, n_features=10, n_informative=10, n_redundant=0, random_state=None):
+    def generate_binary_classification_data(n_samples=10000, n_features=30, n_informative=10, n_redundant=0, random_state=None):
         X, y = make_classification(n_samples=n_samples,
                                    n_features=n_features,
                                    n_informative=n_informative,
@@ -1275,7 +1472,7 @@ if __name__ == "__main__":
     #
     # Reference
     # CART model using sklearn
-    cart_model = DecisionTreeClassifier(criterion='gini', max_depth=10, random_state=2821)
+    cart_model = DecisionTreeClassifier(criterion='gini', max_depth=12, random_state=2821)
     cart_model.fit(X_train, y_train)
     
     # Predictions
@@ -1290,18 +1487,22 @@ if __name__ == "__main__":
     backend = "numpy"
     device = "cpu"
     cart = CART("classification", max_depth=12, loss="gini",
-                min_samples_split=0.001, 
+                min_samples_split=0.0002, 
                 prune=True,
-                prune_alpha=0.0005,
+                prune_alpha=0.0004,
                 random_state=None,
                 grid_accelerator=10,
-                grid_use_percentile=True,
+                grid_use_percentile=False,
                 grid_point_variant=0.05
                 )
     re_train_y = cart._to_onehot(Matrix(y_train.to_numpy(), backend, device=device), 3).astype(int)
     
     # Fit the tree
     cart.fit(Matrix(X_train.to_numpy(), backend, device=device), re_train_y, use_features_idx=None)
+    
+    # Or fit a weighted tree
+    weights = Matrix(X_train.abs().to_numpy(), backend, device=device)[:,[0]]
+    cart.fit(Matrix(X_train.to_numpy(), backend, device=device), re_train_y, weights=weights, use_features_idx=None)
     
     # Predict the labels
     n = 9999
@@ -1313,8 +1514,9 @@ if __name__ == "__main__":
     print("CART Accuracy:", ct.compute())
     
     # Plot the tree
-    cart.plot_tree([35, 20])
+    cart.plot_tree([40,10])
     
     # Plot the feature importance
     cart.plot_feature_importance(10, [15, 9])
+    
     

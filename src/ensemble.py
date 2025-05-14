@@ -15,6 +15,10 @@ from matrix import Matrix
 
 from baseml import MLBase, Regression, Classification
 
+from copy import deepcopy
+
+import matplotlib.pyplot as plt
+
 
 # Base Class for Ensemble Models
 class Ensemble(Regression, Classification):
@@ -22,6 +26,19 @@ class Ensemble(Regression, Classification):
     __attr__ = "MML.Ensemble"
     
     def __init__(self, *, feature_names: Matrix | Tensor | None = None):
+        """
+        Initializes a Base ensemble model.
+
+        Args:
+            feature_names (Matrix | Tensor | None, optional): A Matrix or Tensor object containing strings representing the names of the features used by the model. 
+                Defaults to None.  If provided, it should be a one-dimensional structure with a length equal to the number of columns in the data used for training.
+
+        Attributes:
+            feature_names (Matrix | Tensor | None): The feature names associated with the model, if provided during initialization.  Inherited from Ensemble.
+
+        Returns:
+            None
+        """
         
         super().__init__()
         
@@ -34,7 +51,164 @@ class Ensemble(Regression, Classification):
         
     def predict(self):
         raise NotImplementedError("Predict is NOT implemented in the base class.")    
-    
+        
+    def _is_fitted(self) -> bool:
+        """
+        Check if the Random Forest has been fitted or not.
+
+        Returns
+            -------
+            bool, if the model is fitted or not.
+
+        """
+        # Base Class Attribute Test
+        try:
+            _ = self._estimators
+        except AttributeError as e:
+            raise RuntimeError(f"Invalid Inheritence! An Ensemble child class does NOT have `self._estimators` attribute, caused an error {e}.")
+        
+        return True if len(self._estimators) > 0 else False
+        
+    def plot_tree_id(self, tree_id: int, figsize = (14, 8), **kwargs):
+        """
+        Plot an image representing the structure of the `tree_id`-th decision tree within the forest.
+        For leaf nodes, the label shows the prediction.
+        It calls the tree's method to do the plot.
+        
+        Args:
+            tree_id: int, the index of the tree to be plotted
+            figsize: tuple, the size of the plot
+        """
+        # Base Class Attribute Test
+        try:
+            _ = self._estimators
+        except AttributeError as e:
+            raise RuntimeError(f"Invalid Inheritence! An Ensemble child class does NOT have `self._estimators` attribute, caused an error {e}.")
+        
+        
+        # Check if the model has (at least partially) fitted or not
+        if self._is_fitted() == False:
+            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the tree structure.")
+            
+        if self._estimators.get(tree_id, None) is None:
+            raise RuntimeError(f"Tree {tree_id} has NOT been trained. Please train or continue to train before plotting the tree structure.")
+        self._estimators[tree_id].plot_tree(figsize = figsize)
+
+    def plot_feature_importances_tree_id(self, tree_id: int, max_features: int = None, figsize=(8, 5), **kwargs) -> None:
+        """
+        Plot an image of the feature importance of ONE TREE as a bar chart.
+        Each bar corresponds to the total loss reduction contributed by a feature.
+        Values are extracted from self.feature_importance, converted to scalars using to_list()
+        if necessary, and rounded to 4 digits.
+        The bars are sorted in descending order by importance, similar to xgboost's plot.
+        It calls the tree's method to do the plot.
+        
+        Args:
+            tree_id: int, the index of the tree to be plotted
+            max_features: int, the maximum number of features to plot (in importance descending)
+            figsize: tuple, the size of the plot
+
+        Returns
+            -------
+            None.
+
+        """
+        # Base Class Attribute Test
+        try:
+            _ = self._estimators
+        except AttributeError as e:
+            raise RuntimeError(f"Invalid Inheritence! An Ensemble child class does NOT have `self._estimators` attribute, caused an error {e}.")
+        
+        # Check if the model has (at least partially) fitted or not
+        if self._is_fitted() == False:
+            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the feature importance.")
+            
+        if self._estimators.get(tree_id, None) is None:
+            raise RuntimeError(f"Tree {tree_id} has NOT been trained. Please train or continue to train before plotting the tree structure.")
+        self._estimators[tree_id].plot_feature_importance(max_features = max_features, figsize = figsize)
+
+    def plot_feature_importances_average(self, max_features: int = None, figsize=(8, 5), normalize: bool = False, **kwargs) -> None:
+        """
+        Plot an image of the feature importance of the averaged tree as a bar chart.
+        Each bar corresponds to the total loss reduction contributed by a feature.
+        Values are extracted from self.feature_importance, converted to scalars using to_list()
+        if necessary, and rounded to 4 digits.
+        The bars are sorted in descending order by importance, similar to xgboost's plot.
+        
+        Args:
+            max_features: int, the maximum number of features to plot (in importance descending)
+            figsize: tuple, the size of the plot
+
+        Returns
+            -------
+            list of tuple (feature_idx, feature_importance)
+
+        """
+        # Base Class Attribute Test
+        try:
+            _ = self._estimators
+        except AttributeError as e:
+            raise RuntimeError(f"Invalid Inheritence! An Ensemble child class does NOT have `self._estimators` attribute, caused an error {e}.")
+        try:
+            _ = self.n_estimators_used
+        except AttributeError as e:
+            raise RuntimeError(f"Invalid Inheritence! An Ensemble child class does NOT have `self.n_estimators_used` attribute, caused an error {e}.")
+
+        # Check if the model has (at least partially) fitted or not
+        if self._is_fitted() == False:
+            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the feature importance.")
+            
+        # Extract feature_idx-name map from any tree
+        tree_ids = list(self._estimators.keys())
+        feature_index_map = deepcopy(self._estimators[tree_ids[0]].feature_index_map)
+
+        # Extract the sum of feature importance of every trained tree
+        feature_importance_names = feature_index_map.values()
+        n_features = len(feature_importance_names)
+        feature_importance_values = np.repeat(0.0, n_features)
+        for i in range(len(tree_ids)):
+            right_feature_importance = self._estimators[tree_ids[i]].feature_importance
+            for j in range(n_features):
+                right_val = right_feature_importance.get(j, 0.0)
+                if isinstance(right_val, Object):
+                    right_val = right_val.to_list()
+                feature_importance_values[j] = feature_importance_values[j] + right_val / self.n_estimators_used
+        
+        # Extract feature indexes and corresponding importance values as scalars.
+        feat_imp_list = []
+        for feature_name, val in zip(feature_importance_names, feature_importance_values):
+            feat_imp_list.append((feature_name, val))
+        
+        # Sort the features by importance descending (largest first).
+        feat_imp_list.sort(key=lambda x: x[1], reverse=True)
+        
+        # Truncate if employed
+        if max_features is not None:
+            feat_imp_list = feat_imp_list[0:max_features]
+        
+        # Unzip the sorted feature names and importance values.
+        features, importances = zip(*feat_imp_list)
+        
+        # If normalize, then normalize the max to 1
+        if normalize == True:
+            importances = np.array(importances)
+            importances = importances / min(importances)
+            importances = importances.tolist()
+        
+        # Create a bar chart with the sorted feature importances.
+        fig, ax = plt.subplots(figsize=figsize)
+        ax.bar(features, importances)
+        ax.set_xlabel("Features")
+        ax.set_ylabel("Importance")
+        ax.set_title("Average Feature Importance (Gain)")
+        
+        # Add text labels on top of the bars.
+        for idx, v in enumerate(importances):
+            ax.text(idx, v, str(round(v, 4)), ha='center', va='bottom')
+        plt.show()
+        
+        return feat_imp_list
+
     def __repr__(self):
         return "Ensemble(Abstract Class)."
 
@@ -45,6 +219,26 @@ class Bagging(Ensemble):
     __attr__ = "MML.Bagging"
     
     def __init__(self, *, feature_names: Matrix | Tensor | None = None):
+        
+        """
+        Initializes a Bagging ensemble model.
+        
+        This class represents a bagging algorithm, which creates multiple instances of the 
+        same base learner (e.g., decision tree) on different subsets of the training data and 
+        aggregates their predictions to improve overall accuracy and reduce variance. It inherits from the 
+        'Ensemble' base class and provides an optional way to specify feature names for improved interpretability.
+        
+        Args:
+            feature_names (Matrix | Tensor | None, optional): A Matrix or Tensor object containing strings representing the names of the features used by the model. 
+                Defaults to None.  If provided, it should be a one-dimensional structure with a length equal to the number of columns in the data used for training.
+        
+        Attributes:
+            feature_names (Matrix | Tensor | None): The feature names associated with the model, if provided during initialization. Inherited from Ensemble.
+        
+        Returns:
+            None
+        """
+
         
         # Feature Names should be a 1 dimension Matrix or Tensor object of strings
         # It should be equal to the number of columns of data.
@@ -207,6 +401,23 @@ class Boosting(Ensemble):
     __attr__ = "MML.Boosting"
     
     def __init__(self, *, feature_names: Matrix | Tensor | None = None):
+        """
+        Initializes a Boosting ensemble model.
+
+        This class represents a boosting algorithm, which combines multiple weak learners 
+        (typically decision trees) to create a strong predictive model.  It inherits from the 
+        'Ensemble' base class and provides an optional way to specify feature names for improved interpretability.
+
+        Args:
+            feature_names (Matrix | Tensor | None, optional): A Matrix or Tensor object containing strings representing the names of the features used by the model. 
+                Defaults to None.  If provided, it should be a one-dimensional structure with a length equal to the number of columns in the data used for training.
+
+        Attributes:
+            feature_names (Matrix | Tensor | None): The feature names associated with the model, if provided during initialization.  Inherited from Ensemble.
+
+        Returns:
+            None
+        """
         
         # Feature Names should be a 1 dimension Matrix or Tensor object of strings
         # It should be equal to the number of columns of data.

@@ -132,7 +132,7 @@ class RandomForest(Bagging):
         self._feature_sets = {}      # Key: tree id, starting from 0
                                      # Value: feature indices used
         self._bootstrapped = {}      # Key: tree id, starting from 0
-                                     # Value: bootstrapped data tuple (see. bagging.py)
+                                     # Value: bootstrapped data tuple (see. ensemble.py)
 
         # Runtime Containers (Forest Ensemble).
         self._estimators = {}        # Key: tree id, starting from 0
@@ -147,7 +147,8 @@ class RandomForest(Bagging):
             evalmetrics: List[str] | str | None = None,
             early_stop: int | None = None,
             early_stop_logic: str = "some",
-            continue_to_train: bool | None = None):
+            continue_to_train: bool | None = None,
+            **kwargs):
         """
         Train n_estimators independent trees.
         You may want to evaluate datasets while training. If so, please do the following things:
@@ -200,7 +201,10 @@ class RandomForest(Bagging):
             raise ValueError("Stopping logic `early_stop_logic` must be one of ('any', 'some', 'most', 'all')")
             
         # Prepare the subsets and sub-features
-        self._fit_prep(X = X, y = y)
+        if continue_to_train is None or continue_to_train == False:
+            self._fit_prep(X = X, y = y)
+            
+        # Prepare the dimensions of the feature matrix X
         n_samples, n_features = X.shape
         
         # Special evalmetrics type conversion
@@ -211,7 +215,7 @@ class RandomForest(Bagging):
         verbosity = verbosity if verbosity is not None else 0
         
         # Helper: Print and decide the evaluated results
-        def _decide_stop_with_print(batch: int, undecreased_no: int, eval_dict: dict, last_eval_dict: dict):
+        def _decide_stop_with_print(batch: int, undecreased_no: int, eval_dict: dict, last_eval_dict: dict, **kwargs):
             """
             Compare the metics and decide if
 
@@ -242,17 +246,19 @@ class RandomForest(Bagging):
             # If verbosity, print the new evaluation dict
             undes_count = 0
             allmetric_count = 0
-            if verbosity >= 1:
-                for evalset_name in eval_dict.keys():
-                    eval_result = eval_dict[evalset_name]
+            for evalset_name in eval_dict.keys():
+                eval_result = eval_dict[evalset_name]
+                if verbosity >= 1:
                     print("Evalset: [", evalset_name, " : Metrics {", end = " ", sep = "")
-                    for metric_name in eval_result.keys():
-                        metric_value = eval_result[metric_name]
-                        diff_dict[evalset_name][metric_name] = metric_value - last_eval_dict[evalset_name][metric_name]
-                        if diff_dict[evalset_name][metric_name].to_list() > 0:
-                            undes_count += 1
-                        allmetric_count += 1
+                for metric_name in eval_result.keys():
+                    metric_value = eval_result[metric_name]
+                    diff_dict[evalset_name][metric_name] = metric_value - last_eval_dict[evalset_name][metric_name]
+                    if diff_dict[evalset_name][metric_name].to_list() > 0:
+                        undes_count += 1
+                    allmetric_count += 1
+                    if verbosity >= 1:
                         print(metric_name, ":", round(metric_value.to_list(), 4), ", ", end = " ", sep = "")
+                if verbosity >= 1:
                     print("}]", end = "\n")
                     
             # If no early stop, directly return 0, False
@@ -265,21 +271,29 @@ class RandomForest(Bagging):
                     undecreased_no += 1
                     if undecreased_no >= early_stop:
                         return undecreased_no, True
+                    else:
+                        return undecreased_no, False
             elif early_stop_logic == "some":
                 if undes_count * 3 >= allmetric_count:
                     undecreased_no += 1
                     if undecreased_no >= early_stop:
                         return undecreased_no, True
+                    else:
+                        return undecreased_no, False
             elif early_stop_logic == "most":
                 if undes_count * 2 >= allmetric_count:
                     undecreased_no += 1
                     if undecreased_no >= early_stop:
                         return undecreased_no, True
+                    else:
+                        return undecreased_no, False
             elif early_stop_logic == "all":
                 if undes_count * 1 >= allmetric_count:
                     undecreased_no += 1
                     if undecreased_no >= early_stop:
                         return undecreased_no, True
+                    else:
+                        return undecreased_no, False
                     
             # If survives here, return 0, False to refresh the undecreased_no
             return 0, False
@@ -291,7 +305,7 @@ class RandomForest(Bagging):
         
         # Continue to train? Restore the last point
         if continue_to_train is not None:
-            if continue_to_train == True:
+            if continue_to_train == True and self.n_estimators_used > 0:
                 tree_id = self.n_estimators_used
         
         # Build up the forest - semi-sequentially or parallelly
@@ -317,14 +331,14 @@ class RandomForest(Bagging):
                 
             else:
                 # Sequentially train the trees
-                self._train_one_tree(tree_id, one_hot = one_hot)
+                self._train_one_tree(tree_id, one_hot = one_hot, **kwargs)
                 tree_id += 1
                 
             # Evaluate and decide
-            eval_dict = self._eval_one_batch(sequential_batch, evalset = evalset, evalmetrics = evalmetrics, one_hot = one_hot)
+            eval_dict = self._eval_one_batch(sequential_batch, evalset = evalset, evalmetrics = evalmetrics, one_hot = one_hot, **kwargs)
             
             # Try stop maker and receive the advice
-            undecreased_no, decision = _decide_stop_with_print(round_, undecreased_no = undecreased_no, eval_dict = eval_dict, last_eval_dict = last_eval_dict)
+            undecreased_no, decision = _decide_stop_with_print(round_, undecreased_no = undecreased_no, eval_dict = eval_dict, last_eval_dict = last_eval_dict, **kwargs)
             
             # Copy last evaluated dict
             last_eval_dict = deepcopy(eval_dict)
@@ -338,7 +352,7 @@ class RandomForest(Bagging):
             
         return self
 
-    def _fit_prep(self, X: Matrix | Tensor, y: Matrix | Tensor):
+    def _fit_prep(self, X: Matrix | Tensor, y: Matrix | Tensor, **kwargs):
         """
         Prepare datasets for n_estimators and selected features.
 
@@ -398,7 +412,7 @@ class RandomForest(Bagging):
         
         return self
 
-    def _resolve_max_features(self, n_features_all: int, q: int | float | str | None) -> int:
+    def _resolve_max_features(self, n_features_all: int, q: int | float | str | None, **kwargs) -> int:
         """
         Translate max_features spec into an integer 1 ≤ q ≤ n_features_all.
         
@@ -433,7 +447,7 @@ class RandomForest(Bagging):
             return max(1, int(p * q))
         raise ValueError("Unsupported max_features `q` type. Coult be int, float, str and None")
 
-    def _train_one_tree(self, tree_id: int, one_hot: bool, *, _mutex : Mutex | None = None) -> None:
+    def _train_one_tree(self, tree_id: int, one_hot: bool, *, _mutex : Mutex | None = None, **kwargs) -> None:
         """
         Train one tree based on the split data.
 
@@ -477,7 +491,7 @@ class RandomForest(Bagging):
             self._estimators[tree_id] = tree
             self.n_estimators_used += 1
 
-    def _train_semi_sequential(self, tree_ids: List[int] | None, one_hot: bool):
+    def _train_semi_sequential(self, tree_ids: List[int] | None, one_hot: bool, **kwargs):
         """
         Train one batch of trains using ThreadPool based on the split data.
 
@@ -506,7 +520,7 @@ class RandomForest(Bagging):
             fittingpool.waituntil(task_id)
         return
         
-    def _eval_one_batch(self, sequential_batch: int | None = None, evalset: Dict[str, Tuple[Matrix | Tensor, Matrix | Tensor]] | None = None, evalmetrics: List[str] | str | None = None, one_hot: bool = True):
+    def _eval_one_batch(self, sequential_batch: int | None = None, evalset: Dict[str, Tuple[Matrix | Tensor, Matrix | Tensor]] | None = None, evalmetrics: List[str] | str | None = None, one_hot: bool = True, **kwargs):
         """
         Evaluate the `evalset` after training for one batch.    
 
@@ -543,7 +557,7 @@ class RandomForest(Bagging):
                         
                         # Evaluation: this is classification
                         else:
-                            if y_pred.shape[1] == 2 and one_hot == False:
+                            if (y_pred.shape[1] == 2 and one_hot == False) or y_pred.shape[1] == 1:
                                 # Binary and non-one hot
                                 eval_metric = BinaryClassificationMetrics(self._to_binary_prob(y_pred), y_sub, metric_type = metric_name).compute()
                             else:
@@ -562,7 +576,7 @@ class RandomForest(Bagging):
         else:
             return result_dict
 
-    def predict(self, X: Matrix | Tensor) -> Matrix | Tensor:
+    def predict(self, X: Matrix | Tensor, **kwargs) -> Matrix | Tensor:
         """
         Predict target values for samples in X.
         If classification, the output must be one-hot (even binary cases). Please kindly note.
@@ -618,18 +632,7 @@ class RandomForest(Bagging):
         # Compute the aggreagated prediction
         return agg.compute()
     
-    def _is_fitted(self) -> bool:
-        """
-        Check if the Random Forest has been fitted or not.
-
-        Returns
-            -------
-            bool, if the model is fitted or not.
-
-        """
-        return True if len(self._estimators) > 0 else False
-
-    def update_tree_kwargs(self, tree_kwargs : dict | None = None) -> None:
+    def update_tree_kwargs(self, tree_kwargs : dict | None = None, **kwargs) -> None:
         """
         Update the tree-build key word arguments in whole.
         If you hope to replace or remove, please first get and then set by this.
@@ -642,7 +645,7 @@ class RandomForest(Bagging):
         if tree_kwargs is not None:
             self.tree_kwargs = tree_kwargs
             
-    def update_agg_kwargs(self, agg_kwargs: dict | None = None) -> None:
+    def update_agg_kwargs(self, agg_kwargs: dict | None = None, **kwargs) -> None:
         """
         Update the aggregation related key word arguments in whole.
         If you hope to replace or remove, please first get and then set by this.
@@ -655,118 +658,13 @@ class RandomForest(Bagging):
         if agg_kwargs is not None:
             self.agg_kwargs = agg_kwargs
 
-    def plot_tree_id(self, tree_id: int, figsize = (14, 8)):
-        """
-        Plot an image representing the structure of the `tree_id`-th decision tree within the forest.
-        For leaf nodes, the label shows the prediction.
-        It calls the tree's method to do the plot.
-        
-        Args:
-            tree_id: int, the index of the tree to be plotted
-            figsize: tuple, the size of the plot
-        """
-        # Check if the model has (at least partially) fitted or not
-        if self._is_fitted() == False:
-            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the tree structure.")
-            
-        if self._estimators.get(tree_id, None) is None:
-            raise RuntimeError(f"Tree {tree_id} has NOT been trained. Please train or continue to train before plotting the tree structure.")
-        self._estimators[tree_id].plot_tree(figsize = figsize)
-
-    def plot_feature_importances_tree_id(self, tree_id: int, max_features: int = None, figsize=(8, 5)) -> None:
-        """
-        Plot an image of the feature importance of ONE TREE as a bar chart.
-        Each bar corresponds to the total loss reduction contributed by a feature.
-        Values are extracted from self.feature_importance, converted to scalars using to_list()
-        if necessary, and rounded to 4 digits.
-        The bars are sorted in descending order by importance, similar to xgboost's plot.
-        It calls the tree's method to do the plot.
-        
-        Args:
-            tree_id: int, the index of the tree to be plotted
-            max_features: int, the maximum number of features to plot (in importance descending)
-            figsize: tuple, the size of the plot
-
-        Returns
-            -------
-            None.
-
-        """
-        # Check if the model has (at least partially) fitted or not
-        if self._is_fitted() == False:
-            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the feature importance.")
-            
-        if self._estimators.get(tree_id, None) is None:
-            raise RuntimeError(f"Tree {tree_id} has NOT been trained. Please train or continue to train before plotting the tree structure.")
-        self._estimators[tree_id].plot_feature_importance(max_features = max_features, figsize = figsize)
-
-    def plot_feature_importances_average(self, max_features: int = None, figsize=(8, 5)) -> None:
-        """
-        Plot an image of the feature importance of the averaged tree as a bar chart.
-        Each bar corresponds to the total loss reduction contributed by a feature.
-        Values are extracted from self.feature_importance, converted to scalars using to_list()
-        if necessary, and rounded to 4 digits.
-        The bars are sorted in descending order by importance, similar to xgboost's plot.
-        
-        Args:
-            max_features: int, the maximum number of features to plot (in importance descending)
-            figsize: tuple, the size of the plot
-
-        Returns
-            -------
-            None.
-
-        """
-        # Check if the model has (at least partially) fitted or not
-        if self._is_fitted() == False:
-            raise RuntimeError("No weak learner is fitted. Call .fit() before plotting the feature importance.")
-            
-        # Extract feature_idx-name map from any tree
-        tree_ids = list(self._estimators.keys())
-        feature_index_map = deepcopy(self._estimators[tree_ids[0]].feature_index_map)
-
-        # Extract the sum of feature importance of every trained tree
-        feature_importance_names = feature_index_map.values()
-        n_features = len(feature_importance_names)
-        feature_importance_values = np.repeat(0.0, n_features)
-        for i in range(len(tree_ids)):
-            right_feature_importance = self._estimators[tree_ids[i]].feature_importance
-            for j in range(n_features):
-                right_val = right_feature_importance.get(j, 0.0)
-                if isinstance(right_val, Object):
-                    right_val = right_val.to_list()
-                feature_importance_values[j] = feature_importance_values[j] + right_val / self.n_estimators_used
-        
-        # Extract feature indexes and corresponding importance values as scalars.
-        feat_imp_list = []
-        for feature_name, val in zip(feature_importance_names, feature_importance_values):
-            feat_imp_list.append((feature_name, round(val, 4)))
-        
-        # Sort the features by importance descending (largest first).
-        feat_imp_list.sort(key=lambda x: x[1], reverse=True)
-        
-        # Truncate if employed
-        if max_features is not None:
-            feat_imp_list = feat_imp_list[0:max_features]
-        
-        # Unzip the sorted feature names and importance values.
-        features, importances = zip(*feat_imp_list)
-        
-        # Create a bar chart with the sorted feature importances.
-        fig, ax = plt.subplots(figsize=figsize)
-        ax.bar(features, importances)
-        ax.set_xlabel("Features")
-        ax.set_ylabel("Importance")
-        ax.set_title("Average Feature Importance (Gain)")
-        
-        # Add text labels on top of the bars.
-        for idx, v in enumerate(importances):
-            ax.text(idx, v, str(v), ha='center', va='bottom')
-        plt.show()
-
     def __repr__(self):
         return f"RandomForest(task = {self.task}, tree_type = {str(self.tree_type)}, n_estimators = {self.n_estimators})."
     
+    
+# Alias for RandomForest
+RF = RandomForest
+
     
 if __name__ == "__main__":
     
@@ -784,7 +682,7 @@ if __name__ == "__main__":
                                    n_features=n_features,
                                    n_informative=n_informative,
                                    n_redundant=n_redundant,
-                                   n_classes=2,
+                                   n_classes=3,
                                    random_state=random_state)
         return pd.DataFrame(X, columns=[f'feature_{i}' for i in range(X.shape[1])]), pd.Series(y, name='label')
     
@@ -799,7 +697,7 @@ if __name__ == "__main__":
     #
     # Reference
     # RandomForest from sklearn
-    clf = RandomForestClassifier(n_estimators = 10, 
+    clf = RandomForestClassifier(n_estimators = 30, 
                                  max_features = 20,
                                  max_depth = 20,
                                  random_state = None)
@@ -815,9 +713,9 @@ if __name__ == "__main__":
     frontend = Matrix
     backend = "numpy"
     device = "cpu"
-    tree_kwargs = {"max_depth":20, "loss":"logloss",
-                   "min_samples_split":0.005, 
-                   "prune":True, "prune_alpha":0.0006, 
+    tree_kwargs = {"max_depth":24, "loss":"logloss",
+                   "min_samples_split":0.0002, 
+                   "prune":True, "prune_alpha":0.0002, 
                    "grid_accelerator":20, "grid_use_percentile":False,
                    "grid_point_variant":None}
     
@@ -827,9 +725,12 @@ if __name__ == "__main__":
     X_test_x = frontend(X_test.to_numpy(), backend, device=device)
     y_actual_ = frontend(y_test.to_numpy(), backend, device=device).reshape([-1, 1])
     
+    re_train_y = RandomForest._to_onehot(re_train_y, 3)
+    y_actual_  = RandomForest._to_onehot(y_actual_ , 3)
+    
     rf = RandomForest(task = "classification", agg_method = "soft_vote",
-                      n_estimators = 10,
-                      n_workers = 2,
+                      n_estimators = 30,
+                      n_workers = 1,
                       max_features = 0.6,
                       bootstrap_ratio = 1.0,
                       random_state = None,
@@ -847,14 +748,13 @@ if __name__ == "__main__":
     # Predict the labels
     n = 9999
     y_pred_ = rf.predict(X_test_x[0:n])
-    binary_y_pred_ = rf._to_binary_prob(y_pred_)
     
     # Evaluate the test set
-    ct = BinaryClassificationMetrics(binary_y_pred_, y_actual_[0:n], metric_type="accuracy", )
+    ct = MultiClassificationMetrics(y_pred_, y_actual_[0:n], metric_type="accuracy", )
     print("RandomForest Accuracy:", ct.compute())
     
     # Plot the n-th tree
-    rf.plot_tree_id(0, [35,20])
+    rf.plot_tree_id(19, [35,20])
     
     # Plot the average feature importance
     rf.plot_feature_importances_average(12)

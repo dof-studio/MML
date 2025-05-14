@@ -20,8 +20,8 @@ Open sourced with Apache 2.0 License
 What's inside? See below.
 
 # Containers using Mixed Backends
-* Matrix (For ML Algorithms)
-* Tensor (For NN Framework)
+* Matrix (For ML Algorithms) (numpy √ torch √)
+* Tensor (For NN Framework) (numpy √ torch √)
 
 # ML Algorithms from Scratch
 * Linear Models (OLS and FGLS)

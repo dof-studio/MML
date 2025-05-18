@@ -9,12 +9,13 @@ try:
 except ImportError:
     torch = None
     
-from objtyp import Object
-from tensor import Tensor
-
-from baseml import MLBase
-
 from copy import deepcopy
+
+from .objtyp import Object
+from .tensor import Tensor
+
+from .baseml import MLBase
+
 
 # A Deep Neural Network Trainable Parameter Class
 class nn_Parameter(MLBase):

@@ -12,11 +12,11 @@ except ImportError:
 from copy import deepcopy
 from typing import Any, List, Dict, Tuple
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
 
-from baseml import MLBase
+from .baseml import MLBase
 
 
 # Base Class for Data Wrangling

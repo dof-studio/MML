@@ -11,21 +11,21 @@ except ImportError:
 
 from copy import deepcopy
 
-from dump import save, load
-
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
-
-from metrices import RegressionMetrics
-from metrices import BinaryClassificationMetrics
-from metrices import MultiClassificationMetrics
-from baseml import MLBase, Regression, Classification
-
 import lzma
 import random
 from collections import Counter
 import matplotlib.pyplot as plt
+
+from .dump import save, load
+
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
+
+from .metrics import RegressionMetrics
+from .metrics import BinaryClassificationMetrics
+from .metrics import MultiClassificationMetrics
+from .baseml import MLBase, Regression, Classification
 
 
 # Base Class for Tree Models

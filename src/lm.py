@@ -11,14 +11,14 @@ except ImportError:
 
 from typing import Any, Dict, List, Tuple
 
-from objtyp import Object
-from matrix import Matrix
-from tensor import Tensor
+from .objtyp import Object
+from .matrix import Matrix
+from .tensor import Tensor
 
-from baseml import Regression, Classification
+from .baseml import Regression, Classification
 
-from linear import ClosedFormSingleValueRegression
-from linear import GradientDescendSingleValueRegression
+from .linear import ClosedFormSingleValueRegression
+from .linear import GradientDescendSingleValueRegression
 
 
 # Ordinary Single Value Linear Regressoin Model (Collection wrapper)

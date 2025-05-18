@@ -15,11 +15,11 @@ from copy import deepcopy
 from collections import deque
 from typing import Any, List, Tuple, Literal
     
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from nn_parameter import nn_Parameter
-from nn_module import nn_Module
+from .nn_parameter import nn_Parameter
+from .nn_module import nn_Module
 
 
 # Implementation of a Vanilla Long Short Term Memory using TBPTT
@@ -884,6 +884,7 @@ class nn_Layer_StackedLSTM(nn_Module):
     
 
 # Alias for nn_Layer_StackedLSTM
+LSTM = nn_Layer_StackedLSTM
 StackedLSTM = nn_Layer_StackedLSTM
 
 

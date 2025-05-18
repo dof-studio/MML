@@ -9,15 +9,14 @@ try:
 except ImportError:
     torch = None
 
+from copy import deepcopy
 from typing import Any, Literal
     
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from nn_base import nn_Base
-from nn_parameter import nn_Parameter
-
-from copy import deepcopy
+from .nn_base import nn_Base
+from .nn_parameter import nn_Parameter
 
 
 # A Deep Neural Network Interface Module Base Class

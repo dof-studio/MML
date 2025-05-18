@@ -3,8 +3,8 @@
 # A Deep Neural Network Abstract Module Base Class
 # From MML Library by Nathmath
 
-from baseml import MLBase
-from baseml import Regression, Classification
+from .baseml import MLBase
+from .baseml import Regression, Classification
 
 
 # Deep Neural Network Abstract Module Base Class

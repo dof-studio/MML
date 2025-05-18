@@ -8,11 +8,12 @@ try:
     import torch
 except ImportError:
     torch = None
-    
-from matrix import Matrix
-from tensor import Tensor
 
 from typing import Any
+    
+from .matrix import Matrix
+from .tensor import Tensor
+
 
 # Base class
 class BaseTimeSeriesModel:

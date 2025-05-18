@@ -9,10 +9,11 @@ try:
 except ImportError:
     torch = None
     
-from matrix import Matrix
-from tensor import Tensor
+from .matrix import Matrix
+from .tensor import Tensor
 
-from baseml import MLBase
+from .baseml import MLBase
+
 
 # Implementation of Data Scaler
 class Scaling(MLBase):

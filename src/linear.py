@@ -14,14 +14,14 @@ except ImportError:
 from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
-from objtyp import Object
-from matrix import Matrix
-from tensor import Tensor
+from .objtyp import Object
+from .matrix import Matrix
+from .tensor import Tensor
 
-from baseml import Regression, Classification
+from .baseml import Regression, Classification
 
-from metrices import RegressionMetrics
-from metrices import BinaryClassificationMetrics, MultiClassificationMetrics
+from .metrics import RegressionMetrics
+from .metrics import BinaryClassificationMetrics, MultiClassificationMetrics
 
 
 # Base Linear Models

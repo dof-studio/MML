@@ -9,11 +9,13 @@ try:
 except ImportError:
     torch = None
 
-from matrix import Matrix
-from tensor import Tensor
-from baseml import MLBase, Regression, Classification
-from scaling import Scaling
+from .matrix import Matrix
+from .tensor import Tensor
+from .baseml import MLBase, Regression, Classification
+from .scaling import Scaling
 
+
+# Principal Component Analysis
 class PCA(Regression, Classification):
     """
     Principal Component Analysis (PCA) class built upon the Matrix class.

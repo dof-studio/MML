@@ -11,20 +11,20 @@ except ImportError:
 
 from copy import deepcopy
 
-from dump import save, load
+from .dump import save, load
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
 
-from tree import BaseTree
-from lm import LR
+from .tree import BaseTree
+from .lm import LR
 
 
 # Linear Regression (Ordinary) Tree Wrapper
 class LRTW(LR, BaseTree):
     
-    __attr__ = "MML.MRTW"
+    __attr__ = "MML.LRTW"
     
     def __init__(self, 
                  task: str = 'regression', 

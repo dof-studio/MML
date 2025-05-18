@@ -11,11 +11,11 @@ except ImportError:
 
 from typing import Any, Literal
     
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from nn_parameter import nn_Parameter
-from nn_module import nn_Module
+from .nn_parameter import nn_Parameter
+from .nn_module import nn_Module
 
 
 # Implementation of Flatten Layer (Make Tensor Flatten)

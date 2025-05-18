@@ -1,6 +1,6 @@
-# pca.py
+# svm.py
 #
-# A principal component analysis implementation
+# A Support Vector Machine Classifier Implementation
 # From MML Library by Nathmath
 
 import numpy as np
@@ -9,15 +9,15 @@ try:
 except ImportError:
     torch = None
 
-from matrix import Matrix
-from tensor import Tensor
-from baseml import MLBase, Regression, Classification
-from scaling import Scaling
-
 from scipy.optimize import minimize
 from typing import Dict, Optional, Callable
 
+from .matrix import Matrix
+from .tensor import Tensor
+from .baseml import MLBase, Regression, Classification
+from .scaling import Scaling
 
+# Support Vector Machine Classifier
 class SVM(Classification):
     """
     A SVM classifier that uses the dual formulation and supports multiple kernels.
@@ -617,9 +617,12 @@ class SVM(Classification):
                 return decisions, predictions
             else:
                 raise ValueError("Invalid y_scheme! We only support -1,1 or 0,1 binary classification")
-                
- 
-            
+
+
+# Alias for SVM
+SVC = SVM
+
+
 def simple_test():
     # Example training data: two classes that are linearly separable.
     # Features and labels are chosen for demonstration.

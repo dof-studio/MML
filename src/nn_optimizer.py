@@ -11,12 +11,12 @@ except ImportError:
 
 from typing import Any, List, Dict, Literal
 
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from nn_base import nn_Base
-from nn_parameter import nn_Parameter
-from nn_module import nn_Module
+from .nn_base import nn_Base
+from .nn_parameter import nn_Parameter
+from .nn_module import nn_Module
 
 
 # Base Class for All nn Optimizers

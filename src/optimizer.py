@@ -508,3 +508,4 @@ if __name__ == "__main__":
         return torch.tensor(put.price()).clone().requires_grad_(True)
     # This will not yield a result since the grad does not exist
     results = optimize(price_, 0.25, mode = "target", target = 5.5)
+    

@@ -12,30 +12,29 @@ try:
 except ImportError:
     torch = None
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
-
-from dump import save, load
-
 from copy import deepcopy
 from typing import List, Dict, Tuple, Any
-
-from threadpool import Mutex, ThreadPool
-
-from baseml import MLBase, Regression, Classification
-
-from metrices import RegressionMetrics
-from metrices import BinaryClassificationMetrics
-from metrices import MultiClassificationMetrics
-
-from tree import BaseTree, CART
-from tree_wrapper import LRTW
-from ensemble import Ensemble, Bagging
-from aggregation import ClassificationAggregation
-from aggregation import RegressionAggregation
-
 import matplotlib.pyplot as plt
+
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
+
+from .dump import save, load
+
+from .threadpool import Mutex, ThreadPool
+
+from .baseml import MLBase, Regression, Classification
+
+from .metrics import RegressionMetrics
+from .metrics import BinaryClassificationMetrics
+from .metrics import MultiClassificationMetrics
+
+from .tree import BaseTree, CART
+from .tree_wrapper import LRTW
+from .ensemble import Ensemble, Bagging
+from .aggregation import ClassificationAggregation
+from .aggregation import RegressionAggregation
 
 
 # Bagging‑style Random Forest Implementation

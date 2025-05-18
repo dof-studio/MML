@@ -5,8 +5,9 @@
 
 import numpy as np
 import pandas as pd
-from tensor import Tensor
-from matrix import Matrix
+
+from .tensor import Tensor
+from .matrix import Matrix
 
 
 # Encode categorical data into onehot/multilabel columns

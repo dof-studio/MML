@@ -9,15 +9,15 @@ try:
 except ImportError:
     torch = None
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
-
-from baseml import MLBase, Regression, Classification
-
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
+
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
+
+from .baseml import MLBase, Regression, Classification
 
 
 # Base Class for Ensemble Models

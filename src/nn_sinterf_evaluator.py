@@ -13,21 +13,21 @@ from typing import Any, List, Dict, Tuple, Literal
 
 from copy import deepcopy
 
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from baseml import Regression, Classification
+from .baseml import Regression, Classification
 
-from nn_base import nn_Base
-from nn_parameter import nn_Parameter
-from nn_module import nn_Module
+from .nn_base import nn_Base
+from .nn_parameter import nn_Parameter
+from .nn_module import nn_Module
 
-from nn_loss import nn_Loss_BaseLoss
-from nn_optimizer import nn_Optm_BaseOptimizer
+from .nn_loss import nn_Loss_BaseLoss
+from .nn_optimizer import nn_Optm_BaseOptimizer
 
-from metrices import RegressionMetrics
-from metrices import BinaryClassificationMetrics
-from metrices import MultiClassificationMetrics
+from .metrics import RegressionMetrics
+from .metrics import BinaryClassificationMetrics
+from .metrics import MultiClassificationMetrics
 
 
 # Neural Network Fast Evaluation Pipeline

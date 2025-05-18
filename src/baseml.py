@@ -10,12 +10,12 @@ except ImportError:
     torch = None
     
 import lzma
-from dump import save, load
-    
 from typing import List, Tuple
+
+from .dump import save, load
     
-from matrix import Matrix
-from tensor import Tensor
+from .matrix import Matrix
+from .tensor import Tensor
 
 
 # Machine Learning Algorithm Base Class

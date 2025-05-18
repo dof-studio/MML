@@ -9,11 +9,11 @@ try:
 except ImportError:
     torch = None
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
 
-from baseml import MLBase, Classification, Regression
+from .baseml import MLBase, Classification, Regression
 
 # Base Class for Aggregation
 class Aggregation(Classification, Regression):

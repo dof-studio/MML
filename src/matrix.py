@@ -10,7 +10,7 @@ try:
 except ImportError:
     torch = None
 
-from objtyp import Object
+from .objtyp import Object
 
 
 class Matrix(Object):

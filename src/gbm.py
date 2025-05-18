@@ -12,27 +12,27 @@ try:
 except ImportError:
     torch = None
 
-from objtyp import Object
-from tensor import Tensor
-from matrix import Matrix
-
-from dump import save, load
-from threadpool import Mutex, ThreadPool
-
 from copy import deepcopy
 from typing import List, Dict, Tuple, Any
 
-from baseml import MLBase, Regression, Classification
+from .objtyp import Object
+from .tensor import Tensor
+from .matrix import Matrix
 
-from ensemble import Bagging, Boosting
-from tree import BaseTree, CART
-from tree_wrapper import LRTW
-from aggregation import ClassificationAggregation
-from aggregation import RegressionAggregation
+from .dump import save, load
+from .threadpool import Mutex, ThreadPool
 
-from metrices import RegressionMetrics
-from metrices import BinaryClassificationMetrics
-from metrices import MultiClassificationMetrics
+from .baseml import MLBase, Regression, Classification
+
+from .ensemble import Bagging, Boosting
+from .tree import BaseTree, CART
+from .tree_wrapper import LRTW
+from .aggregation import ClassificationAggregation
+from .aggregation import RegressionAggregation
+
+from .metrics import RegressionMetrics
+from .metrics import BinaryClassificationMetrics
+from .metrics import MultiClassificationMetrics
 
 
 # Base Class for Gradient Boosting Models

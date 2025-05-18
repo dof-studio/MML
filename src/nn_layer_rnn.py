@@ -15,11 +15,11 @@ from copy import deepcopy
 from collections import deque
 from typing import Any, List, Tuple, Literal
     
-from objtyp import Object
-from tensor import Tensor
+from .objtyp import Object
+from .tensor import Tensor
 
-from nn_parameter import nn_Parameter
-from nn_module import nn_Module
+from .nn_parameter import nn_Parameter
+from .nn_module import nn_Module
 
 
 # Implementation of a Vanilla RNN Cell using TBPTT
@@ -745,6 +745,7 @@ class nn_Layer_StackedRNN(nn_Module):
     
 
 # Alias for nn_Layer_StackedRNN
+RNN = nn_Layer_StackedRNN
 StackedRNN = nn_Layer_StackedRNN
 
 

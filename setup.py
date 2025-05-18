@@ -7,10 +7,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="mml-pypi",
-    version="0.0.4.0",
+    version="0.0.4.1",
     packages=find_packages(),
-    install_requires=["numpy", "scipy", "torch", "pandas", "matplotlib",
-                      "lzma", "gzip", "pickle", "uuid", "copy"],
+    install_requires=["numpy", "scipy", "torch", "pandas", "matplotlib"],
     author="DOF Studio",
     author_email="dof.hbx@gmail.com",
     description="My Machine Learning (MML) Library. A hybrid backend (numpy or torch) machine learning and deep learning framework coding from scratch.",

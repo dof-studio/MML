@@ -42,6 +42,7 @@ src/optimizer.py
 src/pca.py
 src/random_forest.py
 src/scaling.py
+src/setup.py
 src/simple_nn.py
 src/svm.py
 src/tensor.py

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mml-pypi
-Version: 0.0.4.0
+Version: 0.0.4.1
 Summary: My Machine Learning (MML) Library. A hybrid backend (numpy or torch) machine learning and deep learning framework coding from scratch.
 Home-page: https://github.com/dof-studio/MML/
 Author: DOF Studio
@@ -16,11 +16,6 @@ Requires-Dist: scipy
 Requires-Dist: torch
 Requires-Dist: pandas
 Requires-Dist: matplotlib
-Requires-Dist: lzma
-Requires-Dist: gzip
-Requires-Dist: pickle
-Requires-Dist: uuid
-Requires-Dist: copy
 Dynamic: author
 Dynamic: author-email
 Dynamic: classifier
@@ -32,8 +27,8 @@ Dynamic: requires-dist
 Dynamic: requires-python
 Dynamic: summary
 
-# MML
-My Machine Learning (MML) Library (developed by`Nathmath`/`DOF Studio`) Going to be included in Pypi!
+# MML (mml-pypi)
+My Machine Learning (MML) Library (developed by`Nathmath`/`DOF Studio`), identified as `mml-pypi` on PyPI.
 
 A hybrid backend (`numpy` or `torch`) machine learning and deep learning framework coding from scratch.
 
@@ -41,9 +36,13 @@ It is a fantastic toolkit for machine learning teaching, learning, quick applica
 
 Another shining feature is its `AutoNeuralNetwork` framework - automatically build, train, fine-tune, and validate a neural network especially designed for non-professional groups.
 
+# How to Install
+
+pip install mml-pypi==0.0.4.0
+
 # Version
 
-MML 0.0.3 Released.
+MML 0.0.4 Released.
 
 # License
 

@@ -9,11 +9,13 @@ Another shining feature is its `AutoNeuralNetwork` framework - automatically bui
 
 # How to Install
 
-pip install mml-pypi==0.0.4.0
+pip install mml-pypi==0.0.4.2
+
+import mml
 
 # Version
 
-MML 0.0.4 Released.
+MML 0.0.4.2 Released.
 
 # License
 

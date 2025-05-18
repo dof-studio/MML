@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: mml-pypi
-Version: 0.0.4.1
-Summary: My Machine Learning (MML) Library. A hybrid backend (numpy or torch) machine learning and deep learning framework coding from scratch.
+Version: 0.0.4.2
+Summary: My Machine Learning (MML) Library. A hybrid backend (numpy or torch) machine learning and deep learning framework coding from scratch. Write `import mml` to use it.
 Home-page: https://github.com/dof-studio/MML/
 Author: DOF Studio
 Author-email: dof.hbx@gmail.com
@@ -38,11 +38,13 @@ Another shining feature is its `AutoNeuralNetwork` framework - automatically bui
 
 # How to Install
 
-pip install mml-pypi==0.0.4.0
+pip install mml-pypi==0.0.4.2
+
+import mml
 
 # Version
 
-MML 0.0.4 Released.
+MML 0.0.4.2 Released.
 
 # License
 
